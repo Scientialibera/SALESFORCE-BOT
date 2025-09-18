@@ -12,6 +12,7 @@ from datetime import datetime
 import structlog
 
 from chatbot.clients.gremlin_client import GremlinClient
+from chatbot.clients.fabric_client import FabricLakehouseClient
 from chatbot.models.rbac import RBACContext
 from chatbot.models.result import QueryResult
 from chatbot.services.cache_service import CacheService
@@ -26,6 +27,7 @@ class GraphService:
         self,
         gremlin_client: GremlinClient,
         cache_service: CacheService,
+        fabric_client: Optional[FabricLakehouseClient] = None,
         max_results: int = 100,
         max_traversal_depth: int = 5
     ):
@@ -35,11 +37,13 @@ class GraphService:
         Args:
             gremlin_client: Gremlin client for graph operations
             cache_service: Cache service for query results
+            fabric_client: Optional Fabric lakehouse client for document retrieval
             max_results: Maximum number of results to return
             max_traversal_depth: Maximum depth for graph traversals
         """
         self.gremlin_client = gremlin_client
         self.cache_service = cache_service
+        self.fabric_client = fabric_client
         self.max_results = max_results
         self.max_traversal_depth = max_traversal_depth
     
@@ -474,3 +478,235 @@ class GraphService:
             })
         
         return neighbors
+    
+    async def find_relationships_with_documents(
+        self,
+        account_ids: List[str],
+        rbac_context: RBACContext,
+        relationship_types: Optional[List[str]] = None,
+        max_depth: int = 2,
+        include_document_content: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Find relationships and retrieve related document content from lakehouse.
+        
+        Args:
+            account_ids: List of account IDs to find relationships for
+            rbac_context: User's RBAC context for filtering
+            relationship_types: Optional list of relationship types to include
+            max_depth: Maximum traversal depth
+            include_document_content: Whether to fetch document content from lakehouse
+            
+        Returns:
+            Dictionary with relationships and document content
+        """
+        try:
+            start_time = datetime.utcnow()
+            
+            logger.info(
+                "Finding relationships with documents",
+                account_ids=account_ids,
+                user_id=rbac_context.user_id,
+                include_content=include_document_content
+            )
+            
+            # Step 1: Find relationships using existing method
+            all_relationships = []
+            document_ids = set()
+            
+            for account_id in account_ids:
+                relationships_result = await self.find_relationships(
+                    [account_id], rbac_context, relationship_types, max_depth
+                )
+                
+                if relationships_result:
+                    all_relationships.extend(relationships_result)
+                    
+                    # Extract document IDs from relationships
+                    for rel in relationships_result:
+                        # Look for document references in relationship properties
+                        if rel.get("target_label") == "document":
+                            document_ids.add(rel.get("target_id"))
+                        if rel.get("source_label") == "document":
+                            document_ids.add(rel.get("source_id"))
+                        
+                        # Also check relationship properties for document IDs
+                        properties = rel.get("properties", {})
+                        if "document_id" in properties:
+                            document_ids.add(properties["document_id"])
+                        if "file_id" in properties:
+                            document_ids.add(properties["file_id"])
+            
+            # Step 2: Retrieve document content from lakehouse if requested and fabric client available
+            documents_content = {}
+            if include_document_content and self.fabric_client and document_ids:
+                try:
+                    # Filter to only accessible account documents for RBAC
+                    accessible_accounts = rbac_context.access_scope.allowed_accounts
+                    
+                    documents = await self.fabric_client.get_documents_by_ids(
+                        list(document_ids),
+                        account_id=accessible_accounts[0] if accessible_accounts else None
+                    )
+                    
+                    for doc in documents:
+                        documents_content[doc["file_id"]] = {
+                            "file_name": doc["file_name"],
+                            "file_text": doc["file_text"][:2000],  # Limit text for response size
+                            "file_summary": doc["file_summary"],
+                            "sharepoint_url": doc["sharepoint_url"],
+                            "account_id": doc["account_id"],
+                            "last_modified": doc["last_modified"],
+                            "content_type": doc["content_type"]
+                        }
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to retrieve document content: {e}")
+                    # Continue without document content
+            
+            # Step 3: Build enriched response
+            execution_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+            
+            result = {
+                "success": True,
+                "account_ids": account_ids,
+                "relationships": all_relationships,
+                "documents_found": len(document_ids),
+                "documents_content": documents_content,
+                "metadata": {
+                    "relationship_count": len(all_relationships),
+                    "document_count": len(documents_content),
+                    "execution_time_ms": execution_time,
+                    "includes_content": include_document_content and bool(self.fabric_client)
+                }
+            }
+            
+            logger.info(
+                "Relationships with documents completed",
+                account_ids=account_ids,
+                user_id=rbac_context.user_id,
+                relationship_count=len(all_relationships),
+                document_count=len(documents_content),
+                execution_time_ms=execution_time
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(
+                "Failed to find relationships with documents",
+                account_ids=account_ids,
+                user_id=rbac_context.user_id,
+                error=str(e)
+            )
+            return {
+                "success": False,
+                "error": str(e),
+                "account_ids": account_ids,
+                "relationships": [],
+                "documents_content": {},
+                "metadata": {"execution_time_ms": 0}
+            }
+    
+    async def find_relationships(
+        self,
+        account_ids: List[str],
+        rbac_context: RBACContext,
+        relationship_types: Optional[List[str]] = None,
+        max_depth: int = 2
+    ) -> List[Dict[str, Any]]:
+        """
+        Find relationships for multiple accounts.
+        
+        Args:
+            account_ids: List of account IDs to find relationships for
+            rbac_context: User's RBAC context for filtering
+            relationship_types: Optional list of relationship types to include
+            max_depth: Maximum traversal depth
+            
+        Returns:
+            List of relationship dictionaries
+        """
+        try:
+            all_relationships = []
+            
+            for account_id in account_ids:
+                # Use existing account relationships method
+                result = await self.find_account_relationships(
+                    account_id, rbac_context, relationship_types, max_depth
+                )
+                
+                if result.success and result.data:
+                    all_relationships.extend(result.data)
+            
+            return all_relationships
+            
+        except Exception as e:
+            logger.error(f"Failed to find relationships for accounts {account_ids}: {e}")
+            return []
+    
+    async def find_neighbors(
+        self,
+        entity_id: str,
+        rbac_context: RBACContext,
+        relationship_types: Optional[List[str]] = None,
+        limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """
+        Find immediate neighbors of an entity.
+        
+        Args:
+            entity_id: Entity ID to find neighbors for
+            rbac_context: User's RBAC context
+            relationship_types: Optional relationship types to filter
+            limit: Maximum number of neighbors to return
+            
+        Returns:
+            List of neighbor dictionaries
+        """
+        try:
+            result = await self.get_account_neighbors(
+                entity_id, rbac_context, relationship_types
+            )
+            
+            if result.success and result.data:
+                return result.data[:limit]
+            
+            return []
+            
+        except Exception as e:
+            logger.error(f"Failed to find neighbors for {entity_id}: {e}")
+            return []
+    
+    async def find_shortest_path(
+        self,
+        from_entity: str,
+        to_entity: str,
+        rbac_context: RBACContext,
+        max_hops: int = 6
+    ) -> Optional[List[Dict[str, Any]]]:
+        """
+        Find shortest path between two entities.
+        
+        Args:
+            from_entity: Source entity ID
+            to_entity: Target entity ID
+            rbac_context: User's RBAC context
+            max_hops: Maximum hops to search
+            
+        Returns:
+            Path as list of nodes and edges, or None if no path found
+        """
+        try:
+            result = await self.find_shortest_path(
+                from_entity, to_entity, rbac_context, relationship_types=None
+            )
+            
+            if result.success and result.data:
+                return result.data[0] if result.data else None
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to find path from {from_entity} to {to_entity}: {e}")
+            return None

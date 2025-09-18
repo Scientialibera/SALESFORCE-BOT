@@ -63,6 +63,7 @@ class GraphAgent:
         plugin.add_function(self.find_account_connections)
         plugin.add_function(self.find_path_between_accounts)
         plugin.add_function(self.analyze_account_network)
+        plugin.add_function(self.find_relationships_with_documents)
         
         # Register with kernel
         self.kernel.add_plugin(plugin)
@@ -598,6 +599,156 @@ class GraphAgent:
             
             logger.error(
                 "Failed to analyze account network",
+                user_query=user_query,
+                error=str(e)
+            )
+            
+            return json.dumps({
+                "success": False,
+                "error": str(e),
+                "user_query": user_query
+            })
+    
+    @kernel_function(
+        description="Find relationships and retrieve related document content for accounts mentioned in user query",
+        name="find_relationships_with_documents"
+    )
+    async def find_relationships_with_documents(
+        self,
+        user_query: str,
+        relationship_types: str = "",
+        max_depth: str = "2",
+        include_content: str = "true",
+        rbac_context: RBACContext = None
+    ) -> str:
+        """
+        Find relationships and retrieve document content for accounts mentioned in user query.
+        First resolves account names, then finds their relationships and retrieves document text from lakehouse.
+        
+        Args:
+            user_query: User's natural language query containing account names
+            relationship_types: Optional comma-separated list of relationship types
+            max_depth: Maximum depth to search (default: 2)
+            include_content: Whether to include document content (default: true)
+            rbac_context: User's RBAC context
+            
+        Returns:
+            JSON string containing relationship and document data
+        """
+        try:
+            tracking_id = await self.telemetry_service.start_performance_tracking(
+                "graph_agent_find_relationships_with_documents",
+                rbac_context
+            )
+            
+            logger.info(
+                "Finding relationships with documents from query",
+                user_query=user_query,
+                relationship_types=relationship_types,
+                max_depth=max_depth,
+                include_content=include_content,
+                user_id=rbac_context.user_id if rbac_context else None
+            )
+            
+            # Step 1: Resolve accounts from the user query
+            resolved_accounts = await self.account_resolver_service.resolve_entities(
+                user_query, rbac_context, confidence_threshold=0.7
+            )
+            
+            if not resolved_accounts:
+                return json.dumps({
+                    "success": False,
+                    "error": "No accounts could be resolved from the query",
+                    "user_query": user_query,
+                    "suggestion": "Please mention specific account names in your query"
+                })
+            
+            # Parse parameters
+            rel_types = [rt.strip() for rt in relationship_types.split(",")] if relationship_types else None
+            depth = int(max_depth)
+            include_doc_content = include_content.lower() == "true"
+            
+            # Step 2: Find relationships and documents using enhanced graph service
+            account_ids = [account["id"] for account in resolved_accounts]
+            result = await self.graph_service.find_relationships_with_documents(
+                account_ids=account_ids,
+                rbac_context=rbac_context,
+                relationship_types=rel_types,
+                max_depth=depth,
+                include_document_content=include_doc_content
+            )
+            
+            # Step 3: Enhance result with account information
+            enhanced_result = {
+                "success": result["success"],
+                "user_query": user_query,
+                "resolved_accounts": [
+                    {
+                        "name": acc["name"],
+                        "id": acc["id"],
+                        "confidence": acc["confidence"]
+                    } for acc in resolved_accounts
+                ],
+                "relationships": result["relationships"],
+                "documents_found": result["documents_found"],
+                "documents_content": result["documents_content"],
+                "analysis": {
+                    "total_relationships": len(result["relationships"]),
+                    "total_documents": len(result["documents_content"]),
+                    "accounts_analyzed": len(resolved_accounts),
+                    "relationship_types_found": list(set(
+                        rel.get("edge_label", "") for rel in result["relationships"]
+                    )),
+                    "document_accounts": list(set(
+                        doc.get("account_id", "") for doc in result["documents_content"].values()
+                    ))
+                },
+                "metadata": result["metadata"]
+            }
+            
+            # Step 4: Add document summaries for better context
+            if result["documents_content"]:
+                document_summaries = []
+                for doc_id, doc_content in result["documents_content"].items():
+                    document_summaries.append({
+                        "document_id": doc_id,
+                        "file_name": doc_content["file_name"],
+                        "summary": doc_content["file_summary"],
+                        "account_id": doc_content["account_id"],
+                        "url": doc_content["sharepoint_url"],
+                        "content_preview": doc_content["file_text"][:300] + "..." if len(doc_content["file_text"]) > 300 else doc_content["file_text"]
+                    })
+                enhanced_result["document_summaries"] = document_summaries
+            
+            await self.telemetry_service.end_performance_tracking(
+                tracking_id,
+                success=True,
+                metrics={
+                    "accounts_resolved": len(resolved_accounts),
+                    "relationships_found": len(result["relationships"]),
+                    "documents_found": len(result["documents_content"])
+                }
+            )
+            
+            logger.info(
+                "Relationships with documents found",
+                user_query=user_query,
+                user_id=rbac_context.user_id if rbac_context else None,
+                relationships_count=len(result["relationships"]),
+                documents_count=len(result["documents_content"])
+            )
+            
+            return json.dumps(enhanced_result, indent=2)
+            
+        except Exception as e:
+            await self.telemetry_service.end_performance_tracking(
+                tracking_id,
+                success=False,
+                error_details={"error": str(e)}
+            )
+            
+            logger.error(
+                "Failed to find relationships with documents",
                 user_query=user_query,
                 error=str(e)
             )

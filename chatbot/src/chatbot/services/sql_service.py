@@ -2,7 +2,7 @@
 SQL service for executing queries with RBAC filtering.
 
 This service handles SQL query generation, validation, RBAC filter injection,
-and execution against the data lakehouse SQL endpoints. The lakehouse contains
+and execution against the Fabric lakehouse SQL endpoints. The lakehouse contains
 structured data extracted from Salesforce and SharePoint by the data engineering team.
 """
 
@@ -13,10 +13,13 @@ from datetime import datetime
 import structlog
 import pyodbc
 
+from chatbot.clients.aoai_client import AzureOpenAIClient
 from chatbot.models.rbac import RBACContext
 from chatbot.models.result import QueryResult
 from chatbot.repositories.sql_schema_repository import SQLSchemaRepository
 from chatbot.services.cache_service import CacheService
+from chatbot.services.telemetry_service import TelemetryService
+from chatbot.config.settings import FabricLakehouseSettings
 
 logger = structlog.get_logger(__name__)
 
@@ -26,27 +29,34 @@ class SQLService:
     
     def __init__(
         self,
-        connection_string: str,
+        aoai_client: AzureOpenAIClient,
         schema_repository: SQLSchemaRepository,
         cache_service: CacheService,
-        max_rows: int = 1000,
-        query_timeout_seconds: int = 60
+        telemetry_service: TelemetryService,
+        settings: FabricLakehouseSettings
     ):
         """
         Initialize the SQL service.
         
         Args:
-            connection_string: SQL Server connection string
+            aoai_client: Azure OpenAI client for LLM operations
             schema_repository: Repository for schema metadata
             cache_service: Cache service for query results
-            max_rows: Maximum rows to return per query
-            query_timeout_seconds: Query execution timeout
+            telemetry_service: Telemetry service for monitoring
+            settings: Fabric lakehouse connection settings
         """
-        self.connection_string = connection_string
+        self.aoai_client = aoai_client
         self.schema_repository = schema_repository
         self.cache_service = cache_service
-        self.max_rows = max_rows
-        self.query_timeout_seconds = query_timeout_seconds
+        self.telemetry_service = telemetry_service
+        self.settings = settings
+        
+        # Build connection string from settings
+        self.connection_string = self._build_connection_string()
+        
+        # Service configuration
+        self.max_rows = settings.max_rows
+        self.query_timeout_seconds = settings.query_timeout
         
         # Allowed SQL operations (security whitelist)
         self.allowed_operations = {"SELECT", "WITH"}
@@ -57,6 +67,18 @@ class SQLService:
             "TRUNCATE", "EXEC", "EXECUTE", "sp_", "xp_", "BACKUP",
             "RESTORE", "SHUTDOWN", "RECONFIGURE"
         }
+    
+    def _build_connection_string(self) -> str:
+        """Build connection string for Fabric lakehouse."""
+        return (
+            f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+            f"SERVER={self.settings.sql_endpoint};"
+            f"DATABASE={self.settings.database};"
+            f"Authentication=ActiveDirectoryMsi;"
+            f"Connection Timeout={self.settings.connection_timeout};"
+            f"Encrypt=yes;"
+            f"TrustServerCertificate=no;"
+        )
     
     async def execute_query(
         self,

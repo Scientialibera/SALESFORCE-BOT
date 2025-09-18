@@ -70,31 +70,19 @@ class SearchSettings(BaseSettings):
         env_prefix = "SEARCH_"
 
 
-class SQLSettings(BaseSettings):
-    """SQL database configuration for Fabric/Warehouse."""
+class FabricLakehouseSettings(BaseSettings):
+    """Microsoft Fabric lakehouse configuration for document retrieval and SQL queries."""
     
-    server: str = Field(..., description="SQL server hostname")
-    database: str = Field(..., description="Database name")
-    driver: str = Field(default="{ODBC Driver 18 for SQL Server}", description="ODBC driver")
+    sql_endpoint: str = Field(..., description="Fabric lakehouse SQL endpoint")
+    database: str = Field(..., description="Lakehouse database name")
+    workspace_id: Optional[str] = Field(default=None, description="Fabric workspace ID")
+    contracts_table: str = Field(default="contracts_text", description="Contracts table name")
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")
-    max_retries: int = Field(default=3, description="Maximum retry attempts")
+    max_rows: int = Field(default=1000, description="Maximum rows to return per query")
     query_timeout: int = Field(default=60, description="Query timeout in seconds")
     
     class Config:
-        env_prefix = "SQL_"
-    
-    @property
-    def connection_string(self) -> str:
-        """Build connection string using Azure AD authentication."""
-        return (
-            f"DRIVER={self.driver};"
-            f"SERVER={self.server};"
-            f"DATABASE={self.database};"
-            f"Authentication=ActiveDirectoryMsi;"
-            f"Connection Timeout={self.connection_timeout};"
-            f"Encrypt=yes;"
-            f"TrustServerCertificate=no;"
-        )
+        env_prefix = "FABRIC_"
 
 
 class RBACSettings(BaseSettings):
@@ -266,7 +254,7 @@ class ApplicationSettings(BaseSettings):
     cosmos_db: CosmosDBSettings = Field(default_factory=CosmosDBSettings)
     gremlin: GremlinSettings = Field(default_factory=GremlinSettings)
     search: SearchSettings = Field(default_factory=SearchSettings)
-    sql: SQLSettings = Field(default_factory=SQLSettings)
+    fabric_lakehouse: FabricLakehouseSettings = Field(default_factory=FabricLakehouseSettings)
     rbac: RBACSettings = Field(default_factory=RBACSettings)
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
     cache: CacheSettings = Field(default_factory=CacheSettings)

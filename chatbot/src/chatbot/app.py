@@ -22,6 +22,7 @@ from chatbot.config.settings import settings
 from chatbot.clients.aoai_client import AzureOpenAIClient
 from chatbot.clients.cosmos_client import CosmosDBClient
 from chatbot.clients.gremlin_client import GremlinClient
+from chatbot.clients.fabric_client import FabricLakehouseClient
 
 # Import repositories
 from chatbot.repositories.chat_history_repository import ChatHistoryRepository
@@ -74,6 +75,7 @@ class ApplicationState:
         self.aoai_client: AzureOpenAIClient = None
         self.cosmos_client: CosmosDBClient = None
         self.gremlin_client: GremlinClient = None
+        self.fabric_client: FabricLakehouseClient = None
         
         # Repositories
         self.chat_history_repository: ChatHistoryRepository = None
@@ -121,6 +123,7 @@ async def lifespan(app: FastAPI):
         app_state.aoai_client = AzureOpenAIClient(settings.azure_openai)
         app_state.cosmos_client = CosmosDBClient(settings.cosmos_db)
         app_state.gremlin_client = GremlinClient(settings.gremlin)
+        app_state.fabric_client = FabricLakehouseClient(settings.fabric_lakehouse)
         
         # Initialize repositories
         logger.info("Initializing data repositories")
@@ -170,7 +173,7 @@ async def lifespan(app: FastAPI):
             app_state.sql_schema_repository,
             app_state.cache_service,
             app_state.telemetry_service,
-            settings.sql,
+            settings.fabric_lakehouse,
         )
         app_state.feedback_service = FeedbackService(
             app_state.feedback_repository,
@@ -179,6 +182,7 @@ async def lifespan(app: FastAPI):
         )
         app_state.graph_service = GraphService(
             app_state.gremlin_client,
+            app_state.fabric_client,
             app_state.cache_service,
             app_state.telemetry_service,
             settings.graph,
@@ -248,6 +252,8 @@ async def lifespan(app: FastAPI):
                 await app_state.cosmos_client.close()
             if app_state.gremlin_client:
                 await app_state.gremlin_client.close()
+            if app_state.fabric_client:
+                await app_state.fabric_client.close()
             
             logger.info("Application shutdown completed")
             
@@ -441,6 +447,13 @@ def get_gremlin_client() -> GremlinClient:
     if not app_state.gremlin_client:
         raise HTTPException(status_code=503, detail="Gremlin client not available")
     return app_state.gremlin_client
+
+
+def get_fabric_client() -> FabricLakehouseClient:
+    """Get Fabric Lakehouse client dependency."""
+    if not app_state.fabric_client:
+        raise HTTPException(status_code=503, detail="Fabric Lakehouse client not available")
+    return app_state.fabric_client
 
 
 # Dependency injection functions for repositories

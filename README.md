@@ -13,7 +13,7 @@ Data lands in **Microsoft Fabric** using **Dataflows Gen2** and Spark notebooks,
 **Key Architectural Principle:** This chatbot operates on processed data, not live source systems:
 
 - **SQL Agent** → Queries the **data lakehouse SQL endpoint** containing structured Salesforce data extracted by the data engineering team
-- **Graph Agent** → Queries **Cosmos DB** containing relationship data populated from the lakehouse by the data engineering team  
+- **Graph Agent** → Queries **Cosmos DB** containing relationship data populated from the lakehouse by the data engineering team, then retrieves actual document content from the Fabric lakehouse  
 - **Document Indexer** → Processes SharePoint document metadata from the lakehouse (not direct SharePoint access)
 
 **Data Flow:**
@@ -182,7 +182,7 @@ RBAC is enforced with `user.email`/`user.id` → allowlisted accounts and row fi
 ### Tooling Responsibilities
 
 * **SQL Agent**: Executes parameterized T-SQL queries against the **lakehouse SQL endpoint** (not direct Salesforce). The lakehouse contains structured data extracted from Salesforce by the data engineering team. Injects **RBAC filters** (e.g., `WHERE account_id IN (...) AND owner_email = @user`).
-* **Graph Agent**: Executes Gremlin traversals against **Cosmos DB** (not direct SharePoint). The graph database contains relationship data populated from the lakehouse by the data engineering team. Queries are scoped by RBAC edges/predicates.
+* **Graph Agent**: Executes Gremlin traversals against **Cosmos DB** (not direct SharePoint). The graph database contains relationship data populated from the lakehouse by the data engineering team. After finding relevant relationships and document references, the agent retrieves actual document content from the Fabric lakehouse SQL endpoint for comprehensive responses. Queries are scoped by RBAC edges/predicates.
 * **Vector retrieval**: Account-scoped search over `contracts_text` chunks stored in the vector store. Document content is extracted from SharePoint by the data engineering team and processed by the indexer. Returns passages + SharePoint URLs for citations.
 
 ---
