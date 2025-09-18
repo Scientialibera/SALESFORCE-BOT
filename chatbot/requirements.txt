@@ -1,0 +1,10 @@
+# requirements (placeholder)
+# semantic-kernel
+# fastapi
+# uvicorn
+# pydantic
+# azure-identity
+# azure-cosmos
+# gremlinpython
+# numpy
+# scipy

@@ -1,0 +1,4 @@
+# pyproject.toml (placeholder)
+# Define your build-system and dependencies here (poetry/pdm/pip-tools as you prefer).
+# Suggested deps (commented): 
+#   semantic-kernel, fastapi, uvicorn, pydantic, azure-identity, azure-cosmos, gremlinpython, numpy, scipy

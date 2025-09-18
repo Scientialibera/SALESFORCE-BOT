@@ -1,0 +1,7 @@
+# requirements (placeholder)
+# azure-identity
+# azure-cosmos
+# gremlinpython
+# azure-ai-formrecognizer
+# pydantic
+# numpy

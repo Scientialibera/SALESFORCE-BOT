@@ -1,0 +1,4 @@
+# pyproject.toml (placeholder)
+# Suggested deps:
+#   azure-identity, azure-cosmos, gremlinpython, requests, pydantic
+#   azure-ai-formrecognizer (Document Intelligence), numpy
