@@ -1,25 +1,35 @@
-# SharePoint Document Indexer
+# Document Indexer Service
 
-AI-powered document indexing service that processes SharePoint documents, extracts content using Azure Document Intelligence, and creates searchable vector embeddings in Azure AI Search.
+AI-powered document indexing service that processes document content from the **data lakehouse** (not direct SharePoint), extracts content using Azure Document Intelligence, and creates searchable vector embeddings in Azure AI Search.
+
+**Important:** This indexer does not directly connect to SharePoint. Instead, it processes document metadata and content that has been extracted and stored in the Microsoft Fabric lakehouse by the data engineering team.
 
 ## Architecture
 
-The indexer follows a layered architecture:
+The indexer follows a layered architecture working with processed data:
 
 - **FastAPI Application**: REST API for job management and search
-- **Processing Pipelines**: Document processing and embedding generation workflows
+- **Processing Pipelines**: Document processing and embedding generation workflows from lakehouse data
 - **Service Layer**: Business logic for document extraction, chunking, and vector operations
-- **Repository Layer**: Data access for Cosmos DB (SQL + Gremlin APIs)
-- **Client Layer**: Azure service integrations (Document Intelligence, AI Search, SharePoint, OpenAI)
+- **Repository Layer**: Data access for Cosmos DB (SQL + Gremlin APIs) and lakehouse
+- **Client Layer**: Azure service integrations (Document Intelligence, AI Search, Azure OpenAI)
+
+## Data Sources
+
+Unlike direct SharePoint integration, this indexer:
+- **Reads document metadata** from the **Microsoft Fabric lakehouse** (populated by data engineering team)
+- **Processes document content** that has been extracted from SharePoint by the data engineering team
+- **Updates vector embeddings** based on processed lakehouse data
+- **Maintains sync** with the lakehouse state, not live SharePoint state
 
 ## Key Features
 
 ### Document Processing
-- SharePoint Online integration with comprehensive file discovery
-- Azure Document Intelligence for advanced content extraction
+- **Lakehouse integration** with document metadata and content from the data engineering team
+- Azure Document Intelligence for advanced content extraction from lakehouse-stored documents
 - Multiple chunking strategies (fixed, semantic, paragraph, sentence)
 - Entity extraction and metadata enrichment
-- Change Data Capture (CDC) for incremental processing
+- Change Data Capture (CDC) for incremental processing based on lakehouse updates
 
 ### Vector Search
 - Azure AI Search integration with vector and hybrid search
@@ -31,7 +41,7 @@ The indexer follows a layered architecture:
 - Asynchronous background processing
 - Progress tracking and metrics collection
 - Comprehensive error handling and retry logic
-- Full and incremental indexing workflows
+- Full and incremental indexing workflows based on lakehouse state changes
 
 ### Machine Learning
 - Advanced text preprocessing with NLTK and spaCy
@@ -60,10 +70,10 @@ COSMOS_DB_GREMLIN_ENDPOINT=wss://your-cosmos.gremlin.cosmos.azure.com:443/
 # Document Intelligence
 DOCUMENT_INTELLIGENCE_ENDPOINT=https://your-doc-intel.cognitiveservices.azure.com/
 
-# SharePoint
-SHAREPOINT_SITE_URL=https://yourtenant.sharepoint.com/sites/yoursite
-SHAREPOINT_CLIENT_ID=your-app-registration-id
-SHAREPOINT_TENANT_ID=your-tenant-id
+# Microsoft Fabric Lakehouse (Data Source)
+FABRIC_LAKEHOUSE_ENDPOINT=https://your-fabric-workspace.fabric.microsoft.com/
+FABRIC_LAKEHOUSE_DATABASE=your-lakehouse-database
+FABRIC_CONTRACTS_TABLE=contracts_text
 
 # Azure AI Search
 AZURE_SEARCH_ENDPOINT=https://your-search.search.windows.net
@@ -174,18 +184,18 @@ docker run -p 8000:8000 \
 ## Processing Workflows
 
 ### Full Indexing
-1. Discover all SharePoint documents
-2. Extract content using Document Intelligence
+1. Discover document metadata from **Microsoft Fabric lakehouse** (populated by data engineering team)
+2. Extract content using Document Intelligence on lakehouse-stored documents
 3. Apply chunking strategies
 4. Generate vector embeddings
 5. Index in Azure AI Search
 6. Update processing metadata
 
 ### Incremental Indexing
-1. Scan for document changes (CDC)
-2. Process only new/modified files
+1. Scan for document changes in **lakehouse** (CDC)
+2. Process only new/modified files from lakehouse
 3. Update existing embeddings if needed
-4. Maintain index consistency
+4. Maintain index consistency with lakehouse state
 
 ### Embedding Pipeline
 1. Retrieve document chunks
@@ -228,10 +238,11 @@ The indexer provides comprehensive monitoring through:
 - Circuit breaker patterns for external services
 - Recovery mechanisms for interrupted jobs Service
 
-Background worker that ingests/refreshes searchable signals for the chatbot.
+Background worker that ingests/refreshes searchable signals for the chatbot from processed lakehouse data.
 
 ## Responsibilities
-- Discover new/changed SharePoint PDFs (via inventory/ETag/LastModified)
-- Extract text (Azure AI Document Intelligence), chunk, and store in vector store
-- Sync structured schema hints (for SQL Agent) into `sql_schema`
+- Discover new/changed document metadata from **Microsoft Fabric lakehouse** (populated by data engineering team)
+- Extract text from lakehouse-stored documents using Azure AI Document Intelligence, chunk, and store in vector store  
+- Sync structured schema hints (for SQL Agent) from lakehouse into `sql_schema`
 - Track progress (`processed_files`) and emit telemetry
+- **Note:** Does not directly access SharePoint - works with processed data from the lakehouse

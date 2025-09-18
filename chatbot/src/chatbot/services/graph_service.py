@@ -1,8 +1,10 @@
 """
 Graph service for executing Gremlin queries with RBAC filtering.
 
-This service handles graph traversal queries against Cosmos Gremlin API
-with role-based access control and relationship discovery.
+This service handles graph traversal queries against the Cosmos DB Gremlin API
+with role-based access control and relationship discovery. The graph data
+is populated from the lakehouse by the data engineering team and contains
+relationships extracted from Salesforce and SharePoint data.
 """
 
 from typing import Any, Dict, List, Optional, Tuple

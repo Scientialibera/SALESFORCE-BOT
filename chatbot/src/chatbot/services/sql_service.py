@@ -2,7 +2,8 @@
 SQL service for executing queries with RBAC filtering.
 
 This service handles SQL query generation, validation, RBAC filter injection,
-and execution against Fabric SQL endpoints or data warehouses.
+and execution against the data lakehouse SQL endpoints. The lakehouse contains
+structured data extracted from Salesforce and SharePoint by the data engineering team.
 """
 
 import re
@@ -439,6 +440,103 @@ class SQLService:
         
         return query
     
+    async def execute_natural_language_query(
+        self,
+        natural_query: str,
+        rbac_context: RBACContext,
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Execute a natural language query against the lakehouse.
+        
+        This method converts natural language to SQL and executes it against
+        the data lakehouse containing structured Salesforce and SharePoint data.
+        
+        Args:
+            natural_query: Natural language query from user
+            rbac_context: User's RBAC context for filtering
+            limit: Maximum number of records to return
+            
+        Returns:
+            Dictionary with success status, data, and metadata
+        """
+        try:
+            # For now, this is a simplified implementation
+            # In a full implementation, this would use an LLM to convert
+            # natural language to SQL and then execute it
+            
+            # Example: Convert simple queries to SQL
+            sql_query = self._convert_natural_language_to_sql(natural_query, limit)
+            
+            result = await self.execute_query(sql_query, rbac_context)
+            
+            return {
+                "success": result.success,
+                "data": result.data,
+                "sql_query": sql_query,
+                "execution_time_ms": result.execution_time_ms,
+                "error": result.error_message if not result.success else None
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to execute natural language query: {e}")
+            return {
+                "success": False,
+                "data": [],
+                "sql_query": None,
+                "execution_time_ms": 0,
+                "error": str(e)
+            }
+    
+    def _convert_natural_language_to_sql(self, natural_query: str, limit: int) -> str:
+        """
+        Convert natural language to SQL query.
+        
+        This is a simplified implementation. In production, this would use
+        an LLM with the lakehouse schema to generate proper SQL.
+        
+        Args:
+            natural_query: Natural language query
+            limit: Record limit
+            
+        Returns:
+            SQL query string
+        """
+        # Simplified conversion - in practice, use an LLM for this
+        natural_lower = natural_query.lower()
+        
+        if "opportunities" in natural_lower and "account" in natural_lower:
+            return f"""
+            SELECT TOP {limit} 
+                o.id, o.name, o.amount, o.stage, o.close_date,
+                a.name as account_name, a.id as account_id
+            FROM opportunities o
+            JOIN accounts a ON o.account_id = a.id
+            ORDER BY o.amount DESC
+            """
+        elif "accounts" in natural_lower:
+            return f"""
+            SELECT TOP {limit} 
+                id, name, owner_email, created_at, updated_at
+            FROM accounts
+            ORDER BY created_at DESC
+            """
+        elif "contacts" in natural_lower:
+            return f"""
+            SELECT TOP {limit} 
+                id, first_name, last_name, email, account_id
+            FROM contacts
+            ORDER BY last_name, first_name
+            """
+        else:
+            # Default query
+            return f"""
+            SELECT TOP {limit} 
+                'data_type' as source_table,
+                COUNT(*) as record_count
+            FROM accounts
+            """
+    
     async def get_table_preview(
         self,
         schema_name: str,
@@ -447,11 +545,11 @@ class SQLService:
         limit: int = 10
     ) -> QueryResult:
         """
-        Get a preview of table data.
+        Get a preview of table data from the lakehouse.
         
         Args:
-            schema_name: Database schema name
-            table_name: Table name
+            schema_name: Database schema name in the lakehouse
+            table_name: Table name containing Salesforce/SharePoint data
             rbac_context: User's RBAC context
             limit: Number of rows to preview
             

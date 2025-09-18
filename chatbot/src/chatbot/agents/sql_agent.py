@@ -2,8 +2,9 @@
 SQL agent for structured data queries.
 
 This agent specializes in generating and executing SQL queries against
-Salesforce database tables. It always resolves account names first 
-before executing SQL queries to ensure accurate results.
+the data lakehouse containing structured Salesforce and SharePoint data.
+The data engineering team extracts and loads this data from the source systems.
+It always resolves account names first before executing SQL queries to ensure accurate results.
 """
 
 import json

@@ -1,8 +1,9 @@
 """
-Graph agent for relationship-based queries using Gremlin.
+Graph agent for relationship-based queries using Cosmos DB.
 
-This agent specializes in querying graph databases to find relationships,
-patterns, and connections between entities in the Salesforce data.
+This agent specializes in querying the Cosmos DB graph database to find relationships,
+patterns, and connections between entities in the Salesforce and SharePoint data.
+The graph data is populated from the data lakehouse by the data engineering team.
 It always resolves account names first before executing graph queries.
 """
 
