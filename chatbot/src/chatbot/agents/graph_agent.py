@@ -56,9 +56,61 @@ class GraphAgent:
     
     def _register_plugin(self):
         """Register the graph agent as a Semantic Kernel plugin."""
-        # TODO: Update to use current Semantic Kernel plugin API
-        # The KernelPlugin API has changed - need to update this implementation
-        logger.info("Graph agent plugin registration skipped - using basic functionality")
+        try:
+            # Create a plugin from this class with correct API
+            plugin = KernelPlugin.from_object(plugin_instance=self, plugin_name="graph_agent")
+            self.kernel.add_plugin(plugin)
+            
+            logger.info("Graph agent plugin registered with kernel")
+        except Exception as e:
+            logger.error("Failed to register graph agent plugin", error=str(e))
+            logger.info("Graph agent plugin registration skipped - using basic functionality")
+    
+    @kernel_function(
+        description="Graph agent for querying relationships, connections, and account networks",
+        name="graph_agent"
+    )
+    async def graph_agent(
+        self,
+        query: str,
+        user_id: str = "default"
+    ) -> str:
+        """
+        High-level Graph agent function that routes queries to appropriate graph operations.
+        
+        Args:
+            query: User's natural language query
+            user_id: User ID for RBAC context
+            
+        Returns:
+            JSON string containing query results
+        """
+        try:
+            # Create RBAC context
+            rbac_context = RBACContext(
+                user_id=user_id,
+                tenant_id="default",
+                roles=["user"],
+                permissions=[]
+            )
+            
+            # For simplicity, route to find_account_relationships function
+            # In a more sophisticated implementation, this could analyze the query
+            # and route to the most appropriate function
+            return await self.find_account_relationships(
+                user_query=query,
+                relationship_types="",
+                max_depth="2",
+                rbac_context=rbac_context
+            )
+            
+        except Exception as e:
+            logger.error("Graph agent execution failed", error=str(e), query=query)
+            return json.dumps({
+                "success": False,
+                "error": f"Graph agent failed: {str(e)}",
+                "query": query
+            })
     
     @kernel_function(
         description="Find relationships for accounts mentioned in user query",

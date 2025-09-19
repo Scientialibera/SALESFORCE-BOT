@@ -11,6 +11,7 @@ import structlog
 
 from azure.cosmos import exceptions as cosmos_exceptions
 from azure.cosmos.aio import CosmosClient
+from chatbot.config.settings import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -35,7 +36,7 @@ class PromptsRepository:
     async def _get_container(self):
         """Get or create the container reference."""
         if self._container is None:
-            database = self.cosmos_client.get_database_client(self.database_name)
+            database = await self.cosmos_client.get_database_client(self.database_name)
             self._container = database.get_container_client(self.container_name)
         return self._container
     
@@ -104,8 +105,7 @@ class PromptsRepository:
                 items = []
                 async for item in container.query_items(
                     query=query_info["query"],
-                    parameters=query_info["params"],
-                    enable_cross_partition_query=True
+                    parameters=query_info["params"]
                 ):
                     items.append(item)
                 
@@ -202,8 +202,7 @@ class PromptsRepository:
                 items = []
                 async for item in container.query_items(
                     query=query_info["query"],
-                    parameters=query_info["params"],
-                    enable_cross_partition_query=True
+                    parameters=query_info["params"]
                 ):
                     items.append(item)
                 
@@ -332,8 +331,7 @@ class PromptsRepository:
             prompts = []
             async for item in container.query_items(
                 query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 prompts.append(item)
             

@@ -38,7 +38,7 @@ class AgentFunctionsRepository:
     async def _get_container(self):
         """Get or create the container reference."""
         if self._container is None:
-            database = self.cosmos_client.get_database_client(self.database_name)
+            database = await self.cosmos_client.get_database_client(self.database_name)
             self._container = database.get_container_client(self.container_name)
         return self._container
     
@@ -61,8 +61,7 @@ class AgentFunctionsRepository:
             items = []
             async for item in container.query_items(
                 query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 items.append(item)
             
@@ -107,8 +106,7 @@ class AgentFunctionsRepository:
             functions = []
             async for item in container.query_items(
                 query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 functions.append(ToolDefinition(
                     name=item["name"],
@@ -233,3 +231,12 @@ class AgentFunctionsRepository:
         except Exception as e:
             logger.error("Failed to list function definitions", error=str(e))
             raise
+    
+    async def get_all_functions(self) -> List[ToolDefinition]:
+        """
+        Get all available function definitions (alias for list_all_functions).
+        
+        Returns:
+            List of all function definitions
+        """
+        return await self.list_all_functions()

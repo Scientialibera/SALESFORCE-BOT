@@ -36,7 +36,7 @@ class CacheRepository:
     async def _get_container(self):
         """Get or create the container reference."""
         if self._container is None:
-            database = self.cosmos_client.get_database_client(self.database_name)
+            database = await self.cosmos_client.get_database_client(self.database_name)
             self._container = database.get_container_client(self.container_name)
         return self._container
     
@@ -192,8 +192,7 @@ class CacheRepository:
             expired_keys = []
             async for item in container.query_items(
                 query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 expired_keys.append(item["id"])
             
@@ -229,8 +228,7 @@ class CacheRepository:
             total_query = "SELECT VALUE COUNT(1) FROM c"
             total_items = []
             async for count in container.query_items(
-                query=total_query,
-                enable_cross_partition_query=True
+                query=total_query
             ):
                 total_items.append(count)
             
@@ -244,8 +242,7 @@ class CacheRepository:
             expired_items = []
             async for count in container.query_items(
                 query=expired_query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 expired_items.append(count)
             

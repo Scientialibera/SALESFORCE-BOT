@@ -74,6 +74,13 @@ class CosmosDBClient:
         
         return self._database
     
+    async def get_database_client(self, database_name: str):
+        """Public method to get database client for repositories."""
+        if database_name != self.settings.database_name:
+            logger.warning(f"Requested database {database_name} but configured for {self.settings.database_name}")
+        
+        return await self._get_database()
+    
     async def _get_container(self, container_name: str, partition_key: str = "/id"):
         """Get or create container."""
         if container_name not in self._containers:

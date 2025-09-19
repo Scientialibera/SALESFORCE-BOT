@@ -56,11 +56,61 @@ class SQLAgent:
     
     def _register_plugin(self):
         """Register the SQL agent as a Semantic Kernel plugin."""
-        # TODO: Update to use current Semantic Kernel plugin API
-        # The KernelPlugin API has changed - need to update this implementation
-        logger.info("SQL agent plugin registration skipped - using basic functionality")
+        try:
+            # Create a plugin from this class with correct API
+            plugin = KernelPlugin.from_object(plugin_instance=self, plugin_name="sql_agent")
+            self.kernel.add_plugin(plugin)
+            
+            logger.info("SQL agent plugin registered with kernel")
+        except Exception as e:
+            logger.error("Failed to register SQL agent plugin", error=str(e))
+            logger.info("SQL agent plugin registration skipped - using basic functionality")
+    
+    @kernel_function(
+        description="SQL agent for querying sales data, revenue metrics, and business performance",
+        name="sql_agent"
+    )
+    async def sql_agent(
+        self,
+        query: str,
+        user_id: str = "default"
+    ) -> str:
+        """
+        High-level SQL agent function that routes queries to appropriate SQL operations.
         
-        logger.info("SQL agent plugin registered with kernel")
+        Args:
+            query: User's natural language query
+            user_id: User ID for RBAC context
+            
+        Returns:
+            JSON string containing query results
+        """
+        try:
+            # Create RBAC context
+            rbac_context = RBACContext(
+                user_id=user_id,
+                tenant_id="default",
+                roles=["user"],
+                permissions=[]
+            )
+            
+            # For simplicity, route to query_account_data function
+            # In a more sophisticated implementation, this could analyze the query
+            # and route to the most appropriate function
+            return await self.query_account_data(
+                user_query=query,
+                data_types="opportunities,contacts,cases,revenue",
+                limit="20",
+                rbac_context=rbac_context
+            )
+            
+        except Exception as e:
+            logger.error("SQL agent execution failed", error=str(e), query=query)
+            return json.dumps({
+                "success": False,
+                "error": f"SQL agent failed: {str(e)}",
+                "query": query
+            })
     
     @kernel_function(
         description="Query structured data for accounts mentioned in user query",

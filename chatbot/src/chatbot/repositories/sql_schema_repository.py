@@ -57,7 +57,7 @@ class SQLSchemaRepository:
     async def _get_container(self):
         """Get or create the container reference."""
         if self._container is None:
-            database = self.cosmos_client.get_database_client(self.database_name)
+            database = await self.cosmos_client.get_database_client(self.database_name)
             self._container = database.get_container_client(self.container_name)
         return self._container
     
@@ -210,8 +210,7 @@ class SQLSchemaRepository:
             tables = []
             async for item in container.query_items(
                 query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 tables.append(TableMetadata(
                     table_name=item["table_name"],
@@ -280,8 +279,7 @@ class SQLSchemaRepository:
             tables = []
             async for item in container.query_items(
                 query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 tables.append(TableMetadata(
                     table_name=item["table_name"],
@@ -351,8 +349,7 @@ class SQLSchemaRepository:
             related_tables = []
             async for item in container.query_items(
                 query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 # Skip the original table
                 if item["full_name"] != full_table_name:

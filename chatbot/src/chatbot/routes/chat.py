@@ -32,20 +32,29 @@ security = HTTPBearer()
 
 
 # Request/Response models
-class ChatRequest(BaseModel):
-    """Chat message request."""
+class ChatMessage(BaseModel):
+    """Individual chat message in OpenAI format."""
     
-    message: str = Field(..., description="User message text")
-    chat_id: Optional[str] = Field(default=None, description="Chat session ID")
+    role: str = Field(..., description="Message role: 'system', 'user', or 'assistant'")
+    content: str = Field(..., description="Message content")
+
+
+class ChatRequest(BaseModel):
+    """Chat completion request following OpenAI Chat Completion API format."""
+    
+    messages: List[ChatMessage] = Field(..., description="Array of chat messages")
+    user_id: str = Field(..., description="User identifier for RBAC and tracking")
+    session_id: Optional[str] = Field(default=None, description="Session ID for conversation tracking")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Optional metadata")
 
 
 class ChatResponse(BaseModel):
-    """Chat message response."""
+    """Chat completion response following OpenAI Chat Completion API format."""
     
-    chat_id: str = Field(..., description="Chat session ID")
+    session_id: str = Field(..., description="Session ID for conversation tracking")
     turn_id: str = Field(..., description="Conversation turn ID")
-    message: str = Field(..., description="Assistant response")
+    choices: List[Dict[str, Any]] = Field(..., description="Response choices in OpenAI format")
+    usage: Dict[str, int] = Field(default_factory=dict, description="Token usage information")
     sources: List[Dict[str, Any]] = Field(default_factory=list, description="Information sources")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Response metadata")
 
@@ -161,114 +170,195 @@ def get_feedback_service() -> FeedbackService:
 @router.post("/chat", response_model=ChatResponse)
 async def send_message(
     request_data: ChatRequest,
-    user_context: RBACContext = Depends(get_current_user),
     planner_service: PlannerService = Depends(get_planner_service),
     history_service: HistoryService = Depends(get_history_service),
 ) -> ChatResponse:
     """
     Send a message and get AI response using Semantic Kernel planner.
+    OpenAI Chat Completion API compatible endpoint.
     
     Args:
-        request_data: Chat message request
-        user_context: Authenticated user context
+        request_data: Chat completion request with messages array
         planner_service: Planner service for orchestration
         history_service: History service for conversation management
         
     Returns:
-        AI response with sources and metadata
+        AI response in OpenAI Chat Completion format
     """
     try:
+        # Extract user message from messages array (get the latest user message)
+        user_messages = [msg for msg in request_data.messages if msg.role == "user"]
+        if not user_messages:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No user message found in messages array"
+            )
+        
+        user_message = user_messages[-1].content  # Get the latest user message
+        
         # Generate IDs
-        chat_id = request_data.chat_id or str(uuid4())
+        session_id = request_data.session_id or str(uuid4())
         turn_id = str(uuid4())
+        
+        # Create user context - mock only in dev mode
+        if settings.dev_mode:
+            # Mock RBAC context for development
+            user_context = RBACContext(
+                user_id=request_data.user_id,
+                email=f"{request_data.user_id}@example.com",
+                tenant_id="default",
+                object_id=f"obj_{request_data.user_id}",
+                roles=["user"],
+                permissions=set()
+            )
+        else:
+            # In production, this should come from proper JWT authentication
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required. Dev mode is disabled."
+            )
         
         logger.info(
             "Processing chat message",
-            chat_id=chat_id,
+            session_id=session_id,
             turn_id=turn_id,
-            user_id=user_context.user_id,
-            message_length=len(request_data.message),
+            user_id=request_data.user_id,
+            message_length=len(user_message),
         )
         
-        # Get conversation history for context
-        conversation_context = await history_service.get_conversation_context(
-            chat_id, user_context, max_turns=5
-        )
-        
-        # Create a plan using the planner service
-        plan_result = await planner_service.create_plan(
-            goal=request_data.message,
-            rbac_context=user_context,
-            conversation_context=conversation_context,
-        )
-        
-        if not plan_result["success"]:
-            logger.warning(
-                "Failed to create plan",
-                chat_id=chat_id,
-                error=plan_result.get("error"),
+        # Get conversation history for context (create session if it doesn't exist)
+        try:
+            conversation_context = await history_service.get_chat_context(
+                session_id, user_context, max_turns=5
             )
+        except Exception as e:
+            logger.warning(f"Failed to get conversation context: {e}")
+            conversation_context = []
             
-            # Fallback to simple response
-            assistant_response = "I apologize, but I'm having trouble processing your request right now. Please try rephrasing your question or contact support if the issue persists."
-            sources = []
-            metadata = {"error": plan_result.get("error"), "fallback_used": True}
-        else:
-            # Execute the plan
-            execution_result = await planner_service.execute_plan(
-                plan_result["plan"],
-                user_context,
-                conversation_context,
-            )
-            
-            if execution_result["success"]:
-                assistant_response = execution_result["final_answer"]
-                sources = execution_result.get("sources", [])
-                metadata = {
-                    "plan_steps": len(plan_result["plan"].steps),
-                    "execution_time_ms": execution_result.get("execution_time_ms", 0),
-                    "agents_used": execution_result.get("agents_used", []),
-                    "function_calls": execution_result.get("function_calls", 0),
-                }
-            else:
-                logger.warning(
-                    "Plan execution failed",
-                    chat_id=chat_id,
-                    error=execution_result.get("error"),
+            # Create chat session if it doesn't exist
+            try:
+                await history_service.create_chat_session(
+                    rbac_context=user_context,
+                    chat_id=session_id,
+                    title=f"Chat session {session_id[:8]}",
+                    metadata={"created_via": "api", "first_message": user_message[:100]}
                 )
-                assistant_response = "I encountered an issue while processing your request. Please try again or rephrase your question."
-                sources = []
-                metadata = {"execution_error": execution_result.get("error")}
+                logger.info(f"Created new chat session: {session_id}")
+            except Exception as create_error:
+                logger.warning(f"Failed to create chat session: {create_error}")
+                # Continue anyway - we'll handle this in the save step
         
-        # Save the conversation turn
-        turn_data = {
-            "turn_id": turn_id,
-            "user_message": request_data.message,
-            "assistant_message": assistant_response,
-            "sources": sources,
-            "metadata": {
-                **metadata,
-                "timestamp": datetime.utcnow().isoformat(),
-                "user_id": user_context.user_id,
-            },
-        }
+        # Execute plan using planner service
+        try:
+            plan_result = await planner_service.create_plan(
+                user_request=user_message,
+                rbac_context=user_context,
+                conversation_context=conversation_context,
+            )
+            
+            # Execute the plan and get results
+            execution_result = await planner_service.execute_plan(plan_result, user_context)
+            
+            # Extract response from execution result
+            assistant_response = execution_result.final_output or "I wasn't able to process your request."
+            sources = execution_result.execution_metadata.get("sources", [])
+            metadata = {
+                "mode": "agent_execution",
+                "plan_id": plan_result.id,
+                "plan_type": plan_result.plan_type.value,
+                "execution_id": execution_result.execution_id,
+                "steps_executed": len(execution_result.step_results),
+                "execution_status": execution_result.status,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Plan execution failed: {e}")
+            # Fallback to simple response if plan execution fails
+            assistant_response = f"I encountered an issue processing your request: {user_message}. The system is being debugged."
+            sources = []
+            metadata = {
+                "mode": "fallback_response",
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
         
-        await history_service.save_conversation_turn(
-            chat_id, user_context, turn_data
-        )
+        # Save the conversation turn 
+        if settings.dev_mode:
+            # In dev mode, just log the turn without saving to avoid blocking testing
+            logger.info(
+                "Dev mode: Skipping conversation turn save",
+                session_id=session_id,
+                turn_id=turn_id,
+                user_message=user_message[:100] + "..." if len(user_message) > 100 else user_message,
+                assistant_response=assistant_response[:100] + "..." if len(assistant_response) > 100 else assistant_response
+            )
+        else:
+            # Production mode: Save conversation turn properly
+            try:
+                user_msg = Message(
+                    id=f"{turn_id}_user",
+                    role=MessageRole.USER,
+                    content=user_message,
+                    timestamp=datetime.utcnow(),
+                    user_id=user_context.user_id
+                )
+                
+                assistant_msg = Message(
+                    id=f"{turn_id}_assistant",
+                    role=MessageRole.ASSISTANT,
+                    content=assistant_response,
+                    timestamp=datetime.utcnow()
+                )
+                
+                await history_service.add_conversation_turn(
+                    chat_id=session_id,
+                    user_message=user_msg,
+                    assistant_message=assistant_msg,
+                    rbac_context=user_context,
+                    execution_metadata={
+                        "turn_id": turn_id,
+                        "sources": sources,
+                        "response_type": "agent_response",
+                        **metadata
+                    }
+                )
+                logger.info("Conversation turn saved successfully")
+            except Exception as save_error:
+                logger.warning(f"Failed to save conversation turn: {save_error}")
+                # Continue without blocking the response
         
         logger.info(
             "Chat message processed successfully",
-            chat_id=chat_id,
+            session_id=session_id,
             turn_id=turn_id,
             response_length=len(assistant_response),
             sources_count=len(sources),
         )
         
+        # Format response in OpenAI Chat Completion style
+        choices = [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": assistant_response
+                },
+                "finish_reason": "stop"
+            }
+        ]
+        
+        usage = {
+            "prompt_tokens": len(user_message.split()),  # Rough estimate
+            "completion_tokens": len(assistant_response.split()),  # Rough estimate
+            "total_tokens": len(user_message.split()) + len(assistant_response.split())
+        }
+        
         return ChatResponse(
-            chat_id=chat_id,
+            session_id=session_id,
             turn_id=turn_id,
-            message=assistant_response,
+            choices=choices,
+            usage=usage,
             sources=sources,
             metadata=metadata,
         )
@@ -276,14 +366,23 @@ async def send_message(
     except Exception as e:
         logger.error(
             "Failed to process chat message",
-            chat_id=request_data.chat_id,
-            user_id=user_context.user_id,
+            session_id=request_data.session_id,
+            user_id=request_data.user_id,
             error=str(e),
         )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to process message",
-        )
+        
+        # In dev mode, return detailed error for debugging
+        if settings.dev_mode:
+            import traceback
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to process message: {str(e)} | Traceback: {traceback.format_exc()}"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to process message",
+            )
 
 
 @router.get("/chats", response_model=List[ChatSessionResponse])

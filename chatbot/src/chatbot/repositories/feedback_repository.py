@@ -38,7 +38,7 @@ class FeedbackRepository:
     async def _get_container(self):
         """Get or create the container reference."""
         if self._container is None:
-            database = self.cosmos_client.get_database_client(self.database_name)
+            database = await self.cosmos_client.get_database_client(self.database_name)
             self._container = database.get_container_client(self.container_name)
         return self._container
     
@@ -117,8 +117,7 @@ class FeedbackRepository:
             items = []
             async for item in container.query_items(
                 query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 items.append(item)
             
@@ -179,8 +178,7 @@ class FeedbackRepository:
             feedback_list = []
             async for item in container.query_items(
                 query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 feedback_list.append(FeedbackData(
                     feedback_id=item["id"],
@@ -257,8 +255,7 @@ class FeedbackRepository:
             stats_result = []
             async for item in container.query_items(
                 query=stats_query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 stats_result.append(item)
             
@@ -275,8 +272,7 @@ class FeedbackRepository:
             rating_distribution = {}
             async for item in container.query_items(
                 query=rating_query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 rating_distribution[str(item["rating"])] = item["count"]
             

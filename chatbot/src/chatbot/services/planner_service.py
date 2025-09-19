@@ -20,8 +20,9 @@ from semantic_kernel.core_plugins import ConversationSummaryPlugin, TimePlugin
 from chatbot.repositories.agent_functions_repository import AgentFunctionsRepository
 from chatbot.repositories.prompts_repository import PromptsRepository
 from chatbot.models.rbac import RBACContext
-from chatbot.models.plan import Plan, ExecutionStep, ExecutionResult, StepStatus, ToolDecision
+from chatbot.models.plan import Plan, ExecutionStep, ExecutionResult, StepStatus, ToolDecision, PlanType
 from chatbot.services.rbac_service import RBACService
+from chatbot.config.settings import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -90,7 +91,7 @@ class PlannerService:
             available_functions = await self._get_filtered_functions(rbac_context)
             
             # Get system prompt for planning
-            planning_prompt = await self.prompts_repo.get_prompt(
+            planning_prompt = await self.prompts_repo.get_system_prompt(
                 "planner_system",
                 tenant_id=rbac_context.tenant_id,
                 scenario="general"
@@ -101,18 +102,14 @@ class PlannerService:
                 user_request, conversation_context, available_functions
             )
             
-            # Create plan using selected planner
-            if planner_type == "stepwise":
-                sk_plan = await self.stepwise_planner.create_plan(context_text)
-            else:
-                sk_plan = await self.sequential_planner.create_plan(context_text)
-            
-            # Convert SK plan to our plan model
-            plan = self._convert_sk_plan_to_plan(sk_plan, rbac_context)
+            # Create plan using basic logic (since SK planners are not configured)
+            plan = await self._create_basic_plan(
+                user_request, rbac_context, conversation_context, available_functions
+            )
             
             logger.info(
                 "Plan created successfully",
-                plan_id=plan.plan_id,
+                plan_id=plan.id,
                 user_id=rbac_context.user_id,
                 steps_count=len(plan.steps),
                 planner_type=planner_type
@@ -148,7 +145,7 @@ class PlannerService:
         """
         try:
             execution_result = ExecutionResult(
-                plan_id=plan.plan_id,
+                plan_id=plan.id,
                 execution_id=str(uuid4()),
                 started_at=datetime.utcnow(),
                 status="running",
@@ -159,7 +156,7 @@ class PlannerService:
             
             logger.info(
                 "Starting plan execution",
-                plan_id=plan.plan_id,
+                plan_id=plan.id,
                 execution_id=execution_result.execution_id,
                 user_id=rbac_context.user_id
             )
@@ -187,7 +184,7 @@ class PlannerService:
             
             logger.info(
                 "Plan execution completed",
-                plan_id=plan.plan_id,
+                plan_id=plan.id,
                 execution_id=execution_result.execution_id,
                 status=execution_result.status,
                 duration_seconds=execution_result.duration_seconds
@@ -198,14 +195,14 @@ class PlannerService:
         except Exception as e:
             logger.error(
                 "Plan execution failed",
-                plan_id=plan.plan_id,
+                plan_id=plan.id,
                 user_id=rbac_context.user_id,
                 error=str(e)
             )
             
             # Return failed execution result
             return ExecutionResult(
-                plan_id=plan.plan_id,
+                plan_id=plan.id,
                 execution_id=str(uuid4()),
                 started_at=datetime.utcnow(),
                 completed_at=datetime.utcnow(),
@@ -370,7 +367,29 @@ class PlannerService:
             if not step.tool_decision:
                 raise ValueError("No tool decision found for step")
             
-            # Get function from kernel
+            # Handle direct response for no-tool scenarios
+            if step.tool_decision.tool_name == "direct_response":
+                query = step.tool_decision.parameters.get("query", "")
+                response = await self._generate_direct_response(query, rbac_context)
+                
+                step.status = StepStatus.COMPLETED.value
+                step.result = {"output": response, "success": True}
+                
+                step_result = {
+                    "step_id": step.step_id,
+                    "status": "completed",
+                    "output": response,
+                    "execution_time": 0
+                }
+                
+                logger.info(
+                    "Direct response step executed successfully",
+                    step_id=step.step_id
+                )
+                
+                return step_result
+            
+            # Get function from kernel for other tool types
             plugin_name, function_name = self._parse_function_name(step.tool_decision.tool_name)
             
             if plugin_name:
@@ -384,6 +403,17 @@ class PlannerService:
                         break
             
             if not kernel_function:
+                # Debug: Log available plugins and functions
+                logger.error(
+                    "Function not found - debugging available functions",
+                    requested_function=step.tool_decision.tool_name,
+                    available_plugins=list(self.kernel.plugins.keys()),
+                    available_functions=[
+                        f"{plugin_name}.{func_name}" 
+                        for plugin_name, plugin in self.kernel.plugins.items()
+                        for func_name in plugin.functions.keys()
+                    ] if hasattr(self.kernel, 'plugins') else []
+                )
                 raise ValueError(f"Function not found: {step.tool_decision.tool_name}")
             
             # Execute the function
@@ -519,7 +549,7 @@ class PlannerService:
             
             logger.debug(
                 "Plan validation completed",
-                plan_id=plan.plan_id,
+                plan_id=plan.id,
                 valid=validation_result["valid"],
                 errors_count=len(validation_result["errors"])
             )
@@ -529,7 +559,7 @@ class PlannerService:
         except Exception as e:
             logger.error(
                 "Plan validation failed",
-                plan_id=plan.plan_id,
+                plan_id=plan.id,
                 error=str(e)
             )
             
@@ -539,3 +569,119 @@ class PlannerService:
                 "warnings": [],
                 "estimated_duration": 0
             }
+    
+    async def _create_basic_plan(
+        self,
+        user_request: str,
+        rbac_context: RBACContext,
+        conversation_context: Optional[List[Dict[str, Any]]],
+        available_functions: List[Dict[str, Any]]
+    ) -> Plan:
+        """Create a basic plan without Semantic Kernel planners."""
+        
+        # Simple intent detection based on keywords
+        request_lower = user_request.lower()
+        
+        # Determine plan type based on keywords
+        if any(keyword in request_lower for keyword in ["sales", "revenue", "opportunity", "performance", "data", "sql", "query"]):
+            plan_type = PlanType.SQL_ONLY
+            agent_type = "sql_agent"
+        elif any(keyword in request_lower for keyword in ["contact", "account", "relationship", "who", "associated", "connection"]):
+            plan_type = PlanType.GRAPH_ONLY  
+            agent_type = "graph_agent"
+        elif any(keyword in request_lower for keyword in ["sales data", "contact", "account revenue"]):
+            plan_type = PlanType.HYBRID
+            agent_type = "hybrid"
+        else:
+            plan_type = PlanType.NO_TOOL
+            agent_type = "direct_response"
+        
+        # Create plan
+        plan = Plan(
+            id=str(uuid4()),
+            plan_type=plan_type,
+            query=user_request,
+            user_id=rbac_context.user_id,
+            reasoning=f"Basic plan for {plan_type.value} query: {user_request}",
+            confidence=0.8,
+            steps=[],
+            status="created"
+        )
+        
+        # For NO_TOOL plans, create a direct response step
+        if plan_type == PlanType.NO_TOOL:
+            tool_decision = ToolDecision(
+                tool_name="direct_response",
+                confidence=0.9,
+                reasoning="Query is conversational and doesn't require data access",
+                parameters={"query": user_request, "user_id": rbac_context.user_id},
+                estimated_duration_ms=1000
+            )
+        else:
+            # For other plan types, use the appropriate agent
+            tool_decision = ToolDecision(
+                tool_name=agent_type,
+                confidence=0.8,
+                reasoning=f"Selected {agent_type} based on query keywords",
+                parameters={"query": user_request, "user_id": rbac_context.user_id},
+                estimated_duration_ms=5000
+            )
+        
+        step = ExecutionStep(
+            step_id=str(uuid4()),
+            step_type="agent_execution",
+            description=f"Execute {agent_type} for: {user_request}",
+            tool_decision=tool_decision,
+            depends_on=[],
+            status=StepStatus.PENDING.value
+        )
+        
+        plan.add_step(step)
+        
+        logger.info(
+            "Basic plan created",
+            plan_id=plan.id,
+            plan_type=plan_type.value,
+            agent_type=agent_type,
+            user_id=rbac_context.user_id
+        )
+        
+        return plan
+
+    async def _generate_direct_response(self, query: str, rbac_context: RBACContext) -> str:
+        """
+        Generate a direct response for conversational queries that don't require data access.
+        
+        Args:
+            query: User query
+            rbac_context: User's RBAC context
+            
+        Returns:
+            Direct response string
+        """
+        query_lower = query.lower()
+        
+        # Simple response templates for common conversational queries
+        if any(greeting in query_lower for greeting in ["hello", "hi", "hey", "good morning", "good afternoon"]):
+            return f"Hello! I'm your Salesforce Q&A assistant. I can help you find information about accounts, opportunities, contacts, and sales data. What would you like to know?"
+        
+        elif any(weather in query_lower for weather in ["weather", "temperature", "forecast"]):
+            return "I don't have access to weather information. I specialize in helping with Salesforce data and business questions. Is there anything related to your sales data or accounts I can help with?"
+        
+        elif "artificial intelligence" in query_lower or "ai" in query_lower:
+            return "Artificial Intelligence (AI) refers to computer systems that can perform tasks typically requiring human intelligence, such as learning, reasoning, and problem-solving. I'm an AI assistant designed specifically to help with Salesforce data analysis and business intelligence. How can I assist you with your business data?"
+        
+        elif "joke" in query_lower:
+            return "Here's a business joke for you: Why don't salespeople ever get lost? Because they always know where the leads are! 😄 Now, is there anything related to your actual leads or sales data I can help you with?"
+        
+        elif "time" in query_lower:
+            return "I don't have access to current time information, but I can help you analyze time-based trends in your sales data! Would you like to see revenue trends, opportunity timelines, or other time-based business metrics?"
+        
+        elif "coffee" in query_lower:
+            return "I can't help with coffee brewing, but I can definitely help perk up your business insights! Would you like to see your latest sales performance, top opportunities, or account analytics?"
+        
+        elif any(thanks in query_lower for thanks in ["thank", "thanks"]):
+            return "You're welcome! I'm here to help with your Salesforce data and business questions anytime. Feel free to ask about accounts, opportunities, contacts, or sales analytics."
+        
+        else:
+            return f"I'm a specialized Salesforce Q&A assistant focused on helping with business data, accounts, opportunities, and sales analytics. For general questions like '{query}', I'd recommend using a general-purpose AI assistant. However, I'd be happy to help you with any Salesforce or business-related questions!"

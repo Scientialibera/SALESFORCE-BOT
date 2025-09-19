@@ -315,8 +315,7 @@ class RetrievalService:
             chunks = []
             async for item in chunks_container.query_items(
                 query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 chunks.append(item)
             
@@ -382,8 +381,7 @@ class RetrievalService:
             all_chunks = []
             async for item in chunks_container.query_items(
                 query=query,
-                parameters=parameters if filters else None,
-                enable_cross_partition_query=True
+                parameters=parameters if filters else None
             ):
                 all_chunks.append(item)
             
@@ -455,8 +453,7 @@ class RetrievalService:
             results = []
             async for item in chunks_container.query_items(
                 query=cosmos_query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 item["similarity_score"] = item.get("keyword_score", 0) / len(query_words)
                 results.append(item)

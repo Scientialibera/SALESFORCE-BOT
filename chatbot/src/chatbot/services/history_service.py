@@ -33,6 +33,7 @@ class HistoryService:
     async def create_chat_session(
         self,
         rbac_context: RBACContext,
+        chat_id: Optional[str] = None,
         title: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> ChatHistory:
@@ -41,6 +42,7 @@ class HistoryService:
         
         Args:
             rbac_context: User's RBAC context
+            chat_id: Optional specific chat ID to use
             title: Optional chat title
             metadata: Optional session metadata
             
@@ -50,7 +52,7 @@ class HistoryService:
         try:
             chat_history = await self.chat_repository.create_chat_session(
                 user_id=rbac_context.user_id,
-                chat_id=str(uuid4()),
+                chat_id=chat_id,
                 title=title,
                 metadata=metadata
             )
@@ -98,23 +100,31 @@ class HistoryService:
             Created conversation turn
         """
         try:
-            turn = await self.chat_repository.add_conversation_turn(
-                chat_id=chat_id,
+            # Create conversation turn
+            turn = ConversationTurn(
+                id=f"turn_{uuid4().hex[:8]}",
                 user_message=user_message,
                 assistant_message=assistant_message,
-                user_id=rbac_context.user_id,
-                plan=plan,
-                tool_calls=tool_calls,
-                execution_metadata=execution_metadata
+                turn_number=1,  # This should be calculated based on existing turns
+                planning_time_ms=execution_metadata.get("planning_time_ms") if execution_metadata else None,
+                total_time_ms=execution_metadata.get("total_time_ms") if execution_metadata else None
             )
+            
+            # Add turn to chat history
+            success = await self.chat_repository.add_turn_to_chat(
+                chat_id=chat_id,
+                user_id=rbac_context.user_id,
+                turn=turn
+            )
+            
+            if not success:
+                raise Exception("Failed to save conversation turn to repository")
             
             logger.info(
                 "Conversation turn added",
                 chat_id=chat_id,
-                turn_id=turn.turn_id,
+                turn_id=turn.id,
                 user_id=rbac_context.user_id,
-                has_plan=bool(plan),
-                tool_calls_count=len(tool_calls) if tool_calls else 0
             )
             
             return turn

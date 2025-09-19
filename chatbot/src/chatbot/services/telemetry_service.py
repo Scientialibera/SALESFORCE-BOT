@@ -508,8 +508,7 @@ class TelemetryService:
             events = []
             async for event in events_container.query_items(
                 query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
+                parameters=parameters
             ):
                 events.append(event)
             
