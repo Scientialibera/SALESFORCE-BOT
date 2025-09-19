@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
+import uuid
 
 # Import settings and dependencies
 from chatbot.config.settings import settings
@@ -118,51 +119,8 @@ async def lifespan(app: FastAPI):
     This handles initialization and cleanup of shared resources
     like database connections and Azure service clients.
     """
-    import asyncio
-    import signal
-    import gc
-    
-    # Get the current event loop for debugging
-    loop = asyncio.get_event_loop()
-    
-    def debug_tasks():
-        """Debug current asyncio tasks"""
-        tasks = asyncio.all_tasks(loop)
-        print(f"DEBUG: Current tasks count: {len(tasks)}")
-        for i, task in enumerate(tasks):
-            print(f"  Task {i}: {task.get_name()} - {task}")
-            if task.done():
-                print(f"    Status: DONE")
-                if task.exception():
-                    print(f"    Exception: {task.exception()}")
-            else:
-                print(f"    Status: RUNNING")
-    
-    def debug_signal_handlers():
-        """Debug current signal handlers"""
-        print("DEBUG: Signal handlers:")
-        for sig in [signal.SIGTERM, signal.SIGINT]:
-            try:
-                handler = signal.signal(sig, signal.getsignal(sig))
-                signal.signal(sig, handler)  # Restore
-                print(f"  {sig.name}: {handler}")
-            except Exception as e:
-                print(f"  {sig.name}: Error getting handler - {e}")
-    
-    def debug_event_loop_state():
-        """Debug event loop state"""
-        print(f"DEBUG: Event loop running: {loop.is_running()}")
-        print(f"DEBUG: Event loop closed: {loop.is_closed()}")
-        print(f"DEBUG: Event loop debug mode: {loop.get_debug()}")
-    
     # Startup
     logger.info("Starting Account Q&A Bot application", version=settings.version)
-    
-    print("DEBUG: === STARTUP DEBUGGING ===")
-    debug_event_loop_state()
-    debug_signal_handlers()
-    debug_tasks()
-    print("DEBUG: =========================")
     
     try:
         # Initialize Azure clients
@@ -216,59 +174,76 @@ async def lifespan(app: FastAPI):
             settings.cosmos_db.database_name,
             settings.cosmos_db.sql_schema_container,
         )
+        logger.info("Initialized chat history repository", container=settings.cosmos_db.chat_container)
         
         # Initialize services
         logger.info("Initializing application services")
+        
+        # Initialize RBAC service with settings
         app_state.rbac_service = RBACService(settings.rbac)
-        app_state.telemetry_service = TelemetryService(settings.telemetry)
-        app_state.cache_service = CacheService(
-            app_state.cache_repository
-        )
+        logger.info("Initialized RBAC service", enforce_rbac=settings.rbac.enforce_rbac, admin_users=len(settings.rbac.admin_users or []))
+        
+        # Initialize account resolver service
         app_state.account_resolver_service = AccountResolverService(
             app_state.aoai_client,
-            app_state.cache_repository
+            app_state.cache_repository,
+            confidence_threshold=settings.account_resolver.confidence_threshold,
+            max_suggestions=settings.account_resolver.max_candidates,
+            tfidf_threshold=0.3,  # Default value since not in settings
+            use_tfidf=True,  # Default value since not in settings
+        )
+        logger.info("Account resolver service initialized", confidence_threshold=settings.account_resolver.confidence_threshold)
+        
+        app_state.cache_service = CacheService(app_state.cache_repository)
+        app_state.telemetry_service = TelemetryService(
+            app_state.cosmos_client,
+            enable_detailed_tracking=settings.debug
         )
         app_state.sql_service = SQLService(
             app_state.aoai_client,
             app_state.sql_schema_repository,
             app_state.cache_service,
             app_state.telemetry_service,
-            settings.fabric_lakehouse,
+            settings.fabric_lakehouse
         )
-        app_state.feedback_service = FeedbackService(
-            app_state.feedback_repository
-        )
+        app_state.feedback_service = FeedbackService(app_state.feedback_repository)
         app_state.graph_service = GraphService(
             app_state.gremlin_client,
-            app_state.fabric_client,
             app_state.cache_service,
-            app_state.telemetry_service,
-            settings.graph,
+            app_state.fabric_client
         )
-        app_state.history_service = HistoryService(
-            app_state.chat_history_repository
-        )
-        app_state.embedding_utils = EmbeddingUtils()
+        app_state.history_service = HistoryService(app_state.chat_history_repository)
+        
+        # Initialize embedding utils
+        from chatbot.utils.embeddings import EmbeddingUtils
+        embedding_utils = EmbeddingUtils()
+        
         app_state.retrieval_service = RetrievalService(
             app_state.aoai_client,
             app_state.cosmos_client,
             app_state.cache_service,
-            app_state.embedding_utils
+            embedding_utils
         )
-        # Initialize agents with Semantic Kernel
+        
+        # Initialize Semantic Kernel agents
         logger.info("Initializing Semantic Kernel agents")
         
-        # Create Semantic Kernel instance
-        from semantic_kernel import Kernel
-        kernel = Kernel()
+        # Create kernel
+        import semantic_kernel as sk
+        kernel = sk.Kernel()
         
+        # Initialize planner service
         app_state.planner_service = PlannerService(
             kernel,
             app_state.agent_functions_repository,
             app_state.prompts_repository,
-            app_state.rbac_service,
+            app_state.rbac_service
         )
         
+        # Initialize planner
+        logger.info("Planner service initialized")
+        
+        # Initialize SQL agent
         app_state.sql_agent = SQLAgent(
             kernel,
             app_state.sql_service,
@@ -277,6 +252,12 @@ async def lifespan(app: FastAPI):
             app_state.telemetry_service,
         )
         
+        # SQL and Graph agents will load their tools dynamically from the database
+        # through the AgentFunctionsRepository when they execute
+        logger.info("SQL agent enabled" if settings.agents.sql_agent_enabled else "SQL agent disabled")
+        logger.info("Graph agent enabled" if settings.agents.graph_agent_enabled else "Graph agent disabled")
+        
+        # Initialize Graph agent
         app_state.graph_agent = GraphAgent(
             kernel,
             app_state.graph_service,
@@ -285,31 +266,17 @@ async def lifespan(app: FastAPI):
             app_state.telemetry_service,
         )
         
+        # Function definitions are loaded from Cosmos DB via AgentFunctionsRepository
+        # when agents execute, not registered statically at startup
+        logger.info("Agents will load functions dynamically from database")
+        
+        # Store the configured kernel in app state
+        app_state.kernel = kernel
+        
         logger.info("Application startup completed successfully")
         
-        print("DEBUG: === PRE-YIELD DEBUGGING ===")
-        debug_event_loop_state()
-        debug_tasks()
-        print("DEBUG: ============================")
-        
-        # Add a debug marker to confirm we reach the yield point
-        logger.info("About to yield control to the application")
-        print("DEBUG: About to yield - server should now accept requests")
-        
         # This is where we yield control to the FastAPI application
-        # The yield suspends this coroutine until shutdown is requested
         yield
-        
-        # This should only execute on shutdown
-        logger.info("Lifespan yield returned - shutting down")
-        print("DEBUG: === POST-YIELD DEBUGGING ===")
-        debug_event_loop_state()
-        debug_tasks()
-        print("DEBUG: === POST-YIELD DEBUGGING ===")
-        debug_event_loop_state()
-        debug_tasks()
-        print("DEBUG: Yield returned - application is shutting down")
-        print("DEBUG: ==============================")
         
     except Exception as e:
         logger.error("Failed to start application", error=str(e))
@@ -323,12 +290,16 @@ async def lifespan(app: FastAPI):
             # Close clients
             if app_state.aoai_client:
                 await app_state.aoai_client.close()
+                logger.info("Azure OpenAI client closed")
             if app_state.cosmos_client:
                 await app_state.cosmos_client.close()
+                logger.info("Cosmos DB client closed")
             if app_state.gremlin_client:
                 await app_state.gremlin_client.close()
+                logger.info("Gremlin client closed")
             if app_state.fabric_client:
                 await app_state.fabric_client.close()
+                logger.info("Fabric lakehouse client closed")
             
             logger.info("Application shutdown completed")
             
@@ -401,7 +372,7 @@ def configure_middleware(app: FastAPI) -> None:
         import traceback
         
         start_time = asyncio.get_event_loop().time()
-        request_id = str(uuid4())[:8]
+        request_id = str(uuid.uuid4())[:8]
         
         # Log request start
         logger.info(
