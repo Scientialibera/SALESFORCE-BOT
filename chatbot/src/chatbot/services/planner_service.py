@@ -417,10 +417,13 @@ class PlannerService:
                 raise ValueError(f"Function not found: {step.tool_decision.tool_name}")
             
             # Execute the function
-            result = await kernel_function.invoke(
-                variables=step.tool_decision.parameters,
-                context=execution_context
-            )
+            # Create KernelArguments if variables exist
+            if step.tool_decision.parameters:
+                from semantic_kernel.functions import KernelArguments
+                kernel_args = KernelArguments(**step.tool_decision.parameters)
+                result = await kernel_function.invoke(self.kernel, kernel_args)
+            else:
+                result = await kernel_function.invoke(self.kernel)
             
             step.status = StepStatus.COMPLETED.value
             step.result = {"output": str(result), "success": True}

@@ -89,7 +89,9 @@ class SQLAgent:
             # Create RBAC context
             rbac_context = RBACContext(
                 user_id=user_id,
+                email=f"{user_id}@example.com",  # Default email for testing
                 tenant_id="default",
+                object_id=f"obj_{user_id}",  # Default object ID for testing
                 roles=["user"],
                 permissions=[]
             )
@@ -151,8 +153,8 @@ class SQLAgent:
             )
             
             # Step 1: Resolve accounts from the user query
-            resolved_accounts = await self.account_resolver_service.resolve_entities(
-                user_query, rbac_context, confidence_threshold=0.7
+            resolved_accounts = await self.account_resolver_service.resolve_account(
+                user_query, rbac_context
             )
             
             if not resolved_accounts:
@@ -316,8 +318,8 @@ class SQLAgent:
             )
             
             # Step 1: Resolve accounts from the user query
-            resolved_accounts = await self.account_resolver_service.resolve_entities(
-                user_query, rbac_context, confidence_threshold=0.7
+            resolved_accounts = await self.account_resolver_service.resolve_account(
+                user_query, rbac_context
             )
             
             if not resolved_accounts:
@@ -469,8 +471,8 @@ class SQLAgent:
             )
             
             # Step 1: Resolve accounts from the user query
-            resolved_accounts = await self.account_resolver_service.resolve_entities(
-                user_query, rbac_context, confidence_threshold=0.7
+            resolved_accounts = await self.account_resolver_service.resolve_account(
+                user_query, rbac_context
             )
             
             if len(resolved_accounts) < 2:
@@ -621,8 +623,8 @@ class SQLAgent:
             )
             
             # Step 1: Resolve accounts from the user query
-            resolved_accounts = await self.account_resolver_service.resolve_entities(
-                user_query, rbac_context, confidence_threshold=0.7
+            resolved_accounts = await self.account_resolver_service.resolve_account(
+                user_query, rbac_context
             )
             
             if not resolved_accounts:
@@ -777,8 +779,8 @@ class SQLAgent:
             )
             
             # Step 1: Resolve accounts from the user query
-            resolved_accounts = await self.account_resolver_service.resolve_entities(
-                user_query, rbac_context, confidence_threshold=0.7
+            resolved_accounts = await self.account_resolver_service.resolve_account(
+                user_query, rbac_context
             )
             
             if not resolved_accounts:
