@@ -5,8 +5,8 @@ param(
   [ValidateSet('Core','Full')][string]$Mode = 'Core',
 
   [string]$Rg = "$BaseName-rg",
-  [string]$OpenAiModel = "gpt-4o",
-  [string]$OpenAiModelVersion = "2024-05-13"
+  [string]$OpenAiModel = "gpt-4.1",
+  [string]$OpenAiModelVersion = "2025-04-14"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -64,7 +64,7 @@ Ensure-Ext 'containerapp'
 $N            = $BaseName.ToLower()
 $MiName       = "$N-mi"
 $SwaName      = "$N-swa"
-$AoaiName     = "$N-aoai"
+# $AoaiName defined in OpenAI section to use eastus2 account
 $EnvName      = "$N-env"        # ACA env (optional infra)
 $ApimName     = "$N-apim"
 $FdProfile    = "$N-fd"
@@ -104,9 +104,10 @@ if (-not (Exists @("staticwebapp","show","-g",$Rg,"-n",$SwaName))) {
 $swaHost = az staticwebapp show -g $Rg -n $SwaName --query "defaultHostname" -o tsv
 $swaUrl  = "https://$swaHost"
 
-# -------------------- Azure OpenAI (always eastus) --------------------
+# -------------------- Azure OpenAI (eastus2 for quota) --------------------
 Write-Host ">>> Azure OpenAI + $OpenAiModel" -ForegroundColor Cyan
-$aoaiLoc = "eastus"   # force eastus
+$aoaiLoc = "eastus2"   # eastus2 has available quota
+$AoaiName = "$BaseName-aoai-eastus2"  # Use the working account name
 $aoaiCreated = $false
 
 if (-not (Exists @("cognitiveservices","account","show","-g",$Rg,"-n",$AoaiName))) {
@@ -122,6 +123,15 @@ if (-not (Exists @("cognitiveservices","account","show","-g",$Rg,"-n",$AoaiName)
     if ($testAccount) {
       $aoaiCreated = $true
       Write-Host "Azure OpenAI account created successfully" -ForegroundColor Green
+      
+      # Set custom subdomain for token authentication
+      Write-Host "Setting custom subdomain for token authentication..." -ForegroundColor Yellow
+      try {
+        az cognitiveservices account update -g $Rg -n $AoaiName --custom-domain $AoaiName -o none
+        Write-Host "Custom subdomain configured successfully" -ForegroundColor Green
+      } catch {
+        Write-Warning "Failed to set custom subdomain: $($_.Exception.Message)"
+      }
     } else {
       Write-Error "Azure OpenAI account creation appeared to succeed but account not found"
     }
@@ -132,29 +142,99 @@ if (-not (Exists @("cognitiveservices","account","show","-g",$Rg,"-n",$AoaiName)
 } else {
   $aoaiCreated = $true
   Write-Host "Azure OpenAI account already exists" -ForegroundColor Green
+  
+  # Ensure custom subdomain is set for existing account
+  $existingAccount = az cognitiveservices account show -g $Rg -n $AoaiName -o json | ConvertFrom-Json
+  if (-not $existingAccount.properties.customSubDomainName) {
+    Write-Host "Setting custom subdomain for existing account..." -ForegroundColor Yellow
+    try {
+      az cognitiveservices account update -g $Rg -n $AoaiName --custom-domain $AoaiName -o none
+      Write-Host "Custom subdomain configured successfully" -ForegroundColor Green
+    } catch {
+      Write-Warning "Failed to set custom subdomain: $($_.Exception.Message)"
+    }
+  } else {
+    Write-Host "Custom subdomain already configured" -ForegroundColor Green
+  }
 }
 
 if ($aoaiCreated) {
   $aoaiId = az cognitiveservices account show -g $Rg -n $AoaiName --query id -o tsv
-  $aoaiEndpoint = "https://$AoaiName.openai.azure.com/"
+  $aoaiEndpoint = "https://eastus2.api.cognitive.microsoft.com/"
 
   # Model deployment (idempotent) - check if specific deployment name exists
-  $existingDep = az cognitiveservices account deployment show -g $Rg -n $AoaiName --deployment-name $OpenAiModel -o json 2>$null | ConvertFrom-Json
+  $deploymentName = "gpt-41-chat"  # Use working deployment name
+  $existingDep = az cognitiveservices account deployment show -g $Rg -n $AoaiName --deployment-name $deploymentName -o json 2>$null | ConvertFrom-Json
   if (-not $existingDep) {
     try {
-      Write-Host "Deploying model $OpenAiModel..." -ForegroundColor Yellow
-      az cognitiveservices account deployment create -g $Rg -n $AoaiName --deployment-name $OpenAiModel --location eastus2 `
+      Write-Host "Deploying model $OpenAiModel as $deploymentName..." -ForegroundColor Yellow
+      az cognitiveservices account deployment create -g $Rg -n $AoaiName --deployment-name $deploymentName `
         --model-name $OpenAiModel --model-version $OpenAiModelVersion --model-format OpenAI `
-        --scale-settings-scale-type Standard -o none
+        --sku-capacity 10 --sku-name GlobalStandard -o none
       Write-Host "Model deployment created successfully" -ForegroundColor Green
     } catch {
       Write-Warning "Failed to deploy model: $($_.Exception.Message)"
     }
   } else {
-    Write-Host "Model deployment '$OpenAiModel' already exists" -ForegroundColor Green
+    Write-Host "Model deployment '$deploymentName' already exists" -ForegroundColor Green
+  }
+  
+  # Deploy embedding model (required for retrieval)
+  $embeddingDeploymentName = "text-embedding-3-small"
+  $existingEmbeddingDep = az cognitiveservices account deployment show -g $Rg -n $AoaiName --deployment-name $embeddingDeploymentName -o json 2>$null | ConvertFrom-Json
+  if (-not $existingEmbeddingDep) {
+    try {
+      Write-Host "Deploying embedding model $embeddingDeploymentName..." -ForegroundColor Yellow
+      az cognitiveservices account deployment create -g $Rg -n $AoaiName --deployment-name $embeddingDeploymentName `
+        --model-name $embeddingDeploymentName --model-version 1 --model-format OpenAI `
+        --sku-capacity 100 --sku-name Standard -o none
+      Write-Host "Embedding model deployment created successfully" -ForegroundColor Green
+    } catch {
+      Write-Warning "Failed to deploy embedding model: $($_.Exception.Message)"
+    }
+  } else {
+    Write-Host "Embedding model deployment '$embeddingDeploymentName' already exists" -ForegroundColor Green
   }
   # RBAC: AOAI
   Ensure-Role $miPid $aoaiId "Cognitive Services OpenAI User"
+  
+  # Add current user to OpenAI resource
+  try {
+    $currentUserId = az ad signed-in-user show --query id -o tsv 2>$null
+    if ($currentUserId) {
+      Ensure-Role $currentUserId $aoaiId "Cognitive Services OpenAI User" "User"
+      Write-Host "Added current user to OpenAI resource" -ForegroundColor Green
+    }
+  } catch {
+    Write-Warning "Could not add current user to OpenAI resource: $($_.Exception.Message)"
+  }
+  
+  # Test OpenAI completions endpoint
+  Write-Host "Testing OpenAI completions endpoint..." -ForegroundColor Yellow
+  try {
+    $testToken = az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv
+    if ($testToken) {
+      $testEndpoint = "https://$AoaiName.openai.azure.com/openai/deployments/gpt-41-chat/chat/completions?api-version=2024-02-01"
+      $testPayload = '{"messages":[{"role":"user","content":"Hello! This is a test."}],"max_tokens":50}'
+      
+      # Try the API call (may fail if DNS not propagated yet)
+      $testResult = curl -X POST $testEndpoint `
+        -H "Authorization: Bearer $testToken" `
+        -H "Content-Type: application/json" `
+        -d $testPayload 2>$null
+      
+      if ($LASTEXITCODE -eq 0 -and $testResult -like "*choices*") {
+        Write-Host "✓ OpenAI completions endpoint test successful!" -ForegroundColor Green
+      } else {
+        Write-Host "⚠ OpenAI completions endpoint test failed (DNS may not be propagated yet)" -ForegroundColor Yellow
+        Write-Host "   You can manually test with:" -ForegroundColor Gray
+        Write-Host "   `$payload = '$testPayload'" -ForegroundColor Gray
+        Write-Host "   curl -X POST `"$testEndpoint`" -H `"Authorization: Bearer <token>`" -H `"Content-Type: application/json`" -d `$payload" -ForegroundColor Gray
+      }
+    }
+  } catch {
+    Write-Warning "Could not test OpenAI endpoint: $($_.Exception.Message)"
+  }
 } else {
   $aoaiEndpoint = "Not deployed due to errors"
   Write-Warning "Skipping Azure OpenAI operations since account creation failed"
@@ -184,43 +264,45 @@ if (-not $envFound) {
   }
 }
 
-# -------------------- Full mode: Cosmos + APIM + AFD --------------------
-if ($Mode -eq 'Full') {
+# -------------------- Cosmos DB (NoSQL + Gremlin) - Core Infrastructure --------------------
+Write-Host ">>> Cosmos DB (NoSQL + Gremlin)" -ForegroundColor Cyan
+# NoSQL
+if (-not (Exists @("cosmosdb","show","-g",$Rg,"-n",$CosmosSql))) {
+  az cosmosdb create -g $Rg -n $CosmosSql `
+    --kind GlobalDocumentDB `
+    --locations regionName="$Location" failoverPriority=0 isZoneRedundant=False `
+    --public-network-access Enabled -o none
+}
+if (-not (Exists @("cosmosdb","sql","database","show","-g",$Rg,"-a",$CosmosSql,"-n","appdb"))) {
+  az cosmosdb sql database create -g $Rg -a $CosmosSql -n appdb -o none
+}
+$cosmosSqlId = az cosmosdb show -g $Rg -n $CosmosSql --query id -o tsv
+$cosmosSqlEp = az cosmosdb show -g $Rg -n $CosmosSql --query documentEndpoint -o tsv
 
-  # ----- Cosmos DB (NoSQL + Gremlin) -----
-  Write-Host ">>> Cosmos DB (NoSQL + Gremlin)" -ForegroundColor Cyan
-  # NoSQL
-  if (-not (Exists @("cosmosdb","show","-g",$Rg,"-n",$CosmosSql))) {
-    az cosmosdb create -g $Rg -n $CosmosSql `
-      --kind GlobalDocumentDB `
-      --locations regionName="$Location" failoverPriority=0 isZoneRedundant=False `
-      --public-network-access Enabled -o none
-  }
-  if (-not (Exists @("cosmosdb","sql","database","show","-g",$Rg,"-a",$CosmosSql,"-n","appdb"))) {
-    az cosmosdb sql database create -g $Rg -a $CosmosSql -n appdb -o none
-  }
-  $cosmosSqlId = az cosmosdb show -g $Rg -n $CosmosSql --query id -o tsv
-  $cosmosSqlEp = az cosmosdb show -g $Rg -n $CosmosSql --query documentEndpoint -o tsv
+# Gremlin
+if (-not (Exists @("cosmosdb","show","-g",$Rg,"-n",$CosmosGraph))) {
+  az cosmosdb create -g $Rg -n $CosmosGraph `
+    --capabilities EnableGremlin `
+    --locations regionName="$Location" failoverPriority=0 isZoneRedundant=False `
+    --public-network-access Enabled -o none
+}
+if (-not (Exists @("cosmosdb","gremlin","database","show","-g",$Rg,"-a",$CosmosGraph,"-n","graphdb"))) {
+  az cosmosdb gremlin database create -g $Rg -a $CosmosGraph -n graphdb -o none
+}
+if (-not (Exists @("cosmosdb","gremlin","graph","show","-g",$Rg,"-a",$CosmosGraph,"-d","graphdb","-n","account_graph"))) {
+  az cosmosdb gremlin graph create -g $Rg -a $CosmosGraph -d graphdb -n account_graph --partition-key-path "/partitionKey" -o none
+}
+$cosmosGraphId = az cosmosdb show -g $Rg -n $CosmosGraph --query id -o tsv
+$cosmosGraphEp = az cosmosdb show -g $Rg -n $CosmosGraph --query documentEndpoint -o tsv
 
-  # Gremlin
-  if (-not (Exists @("cosmosdb","show","-g",$Rg,"-n",$CosmosGraph))) {
-    az cosmosdb create -g $Rg -n $CosmosGraph `
-      --capabilities EnableGremlin `
-      --locations regionName="$Location" failoverPriority=0 isZoneRedundant=False `
-      --public-network-access Enabled -o none
-  }
-  if (-not (Exists @("cosmosdb","gremlin","database","show","-g",$Rg,"-a",$CosmosGraph,"-n","graphdb"))) {
-    az cosmosdb gremlin database create -g $Rg -a $CosmosGraph -n graphdb -o none
-  }
-  if (-not (Exists @("cosmosdb","gremlin","graph","show","-g",$Rg,"-a",$CosmosGraph,"-d","graphdb","-n","account_graph"))) {
-    az cosmosdb gremlin graph create -g $Rg -a $CosmosGraph -d graphdb -n account_graph --partition-key-path "/partitionKey" -o none
-  }
-  $cosmosGraphId = az cosmosdb show -g $Rg -n $CosmosGraph --query id -o tsv
-  $cosmosGraphEp = az cosmosdb show -g $Rg -n $CosmosGraph --query documentEndpoint -o tsv
-
-  # RBAC for MI on Cosmos (data-plane)
+# RBAC for MI on Cosmos (data-plane)
+if ($aoaiCreated) {
   Ensure-Role $miPid $cosmosSqlId   "Cosmos DB Built-in Data Contributor"
   Ensure-Role $miPid $cosmosGraphId "Cosmos DB Built-in Data Contributor"
+}
+
+# -------------------- Full mode: APIM + AFD --------------------
+if ($Mode -eq 'Full') {
 
   # ----- API Management (minimal API) -----
   Write-Host ">>> API Management (Developer)" -ForegroundColor Cyan
@@ -295,10 +377,10 @@ Write-Host ""
 Write-Host "================ DEPLOYMENT COMPLETE ================" -ForegroundColor Cyan
 Write-Host ("SWA URL              : {0}" -f $swaUrl)
 Write-Host ("AOAI endpoint        : {0}" -f $aoaiEndpoint)
-if ($Mode -eq 'Full') {
-  Write-Host ("Cosmos NoSQL ep      : {0}" -f $cosmosSqlEp)
-  Write-Host ("Cosmos Gremlin ep    : {0}" -f $cosmosGraphEp)
-}
+Write-Host ("AOAI chat model      : gpt-41-chat")
+Write-Host ("AOAI embedding model : text-embedding-3-small")
+Write-Host ("Cosmos NoSQL ep      : {0}" -f $cosmosSqlEp)
+Write-Host ("Cosmos Gremlin ep    : {0}" -f $cosmosGraphEp)
 Write-Host ("Managed Identity     : {0} (clientId: {1})" -f $MiName, $miClientId)
 Write-Host ("Mode                 : {0}" -f $Mode)
 Write-Host "====================================================="
