@@ -84,6 +84,8 @@ async def get_current_user(
         RBAC context for the authenticated user
     """
     try:
+        logger.info("Authenticating user request", url=str(request.url) if request else "unknown")
+        
         # TODO: Implement actual JWT validation
         # For now, create a mock user context
         mock_claims = {
@@ -94,16 +96,22 @@ async def get_current_user(
             "roles": ["sales_rep"],
         }
         
+        logger.info("Created mock claims for testing")
+        
         # Get RBAC service from app
         from chatbot.app import app_state
         rbac_service = app_state.rbac_service
         
         if rbac_service:
-            return await rbac_service.create_rbac_context_from_jwt(mock_claims)
+            logger.info("Using RBAC service to create context")
+            context = await rbac_service.create_rbac_context_from_jwt(mock_claims)
+            logger.info("RBAC context created successfully", user_id=context.user_id)
+            return context
         else:
             # Fallback for testing
+            logger.info("Using fallback RBAC context")
             from chatbot.models.rbac import RBACContext, AccessScope
-            return RBACContext(
+            context = RBACContext(
                 user_id="user@example.com",
                 email="user@example.com",
                 tenant_id="tenant123",
@@ -111,9 +119,14 @@ async def get_current_user(
                 roles=["sales_rep"],
                 access_scope=AccessScope(),
             )
+            logger.info("Fallback RBAC context created successfully")
+            return context
         
     except Exception as e:
-        logger.error("Failed to authenticate user", error=str(e))
+        import traceback
+        logger.error("Failed to authenticate user", error=str(e), traceback=traceback.format_exc())
+        print(f"AUTH EXCEPTION: {type(e).__name__}: {str(e)}")
+        print(f"Auth Traceback:\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",

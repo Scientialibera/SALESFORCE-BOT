@@ -13,19 +13,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from chatbot.app import app
-from chatbot.config.settings import settings
 
 # Export the app instance for ASGI servers
 __all__ = ["app"]
-
-if __name__ == "__main__":
-    import uvicorn
-    
-    # Run the application with uvicorn
-    uvicorn.run(
-        app,
-        host=settings.api_host,
-        port=settings.api_port,
-        log_level=settings.telemetry.log_level.lower(),
-        access_log=True,
-    )

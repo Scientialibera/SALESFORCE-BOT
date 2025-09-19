@@ -118,15 +118,64 @@ async def lifespan(app: FastAPI):
     This handles initialization and cleanup of shared resources
     like database connections and Azure service clients.
     """
+    import asyncio
+    import signal
+    import gc
+    
+    # Get the current event loop for debugging
+    loop = asyncio.get_event_loop()
+    
+    def debug_tasks():
+        """Debug current asyncio tasks"""
+        tasks = asyncio.all_tasks(loop)
+        print(f"DEBUG: Current tasks count: {len(tasks)}")
+        for i, task in enumerate(tasks):
+            print(f"  Task {i}: {task.get_name()} - {task}")
+            if task.done():
+                print(f"    Status: DONE")
+                if task.exception():
+                    print(f"    Exception: {task.exception()}")
+            else:
+                print(f"    Status: RUNNING")
+    
+    def debug_signal_handlers():
+        """Debug current signal handlers"""
+        print("DEBUG: Signal handlers:")
+        for sig in [signal.SIGTERM, signal.SIGINT]:
+            try:
+                handler = signal.signal(sig, signal.getsignal(sig))
+                signal.signal(sig, handler)  # Restore
+                print(f"  {sig.name}: {handler}")
+            except Exception as e:
+                print(f"  {sig.name}: Error getting handler - {e}")
+    
+    def debug_event_loop_state():
+        """Debug event loop state"""
+        print(f"DEBUG: Event loop running: {loop.is_running()}")
+        print(f"DEBUG: Event loop closed: {loop.is_closed()}")
+        print(f"DEBUG: Event loop debug mode: {loop.get_debug()}")
+    
     # Startup
     logger.info("Starting Account Q&A Bot application", version=settings.version)
+    
+    print("DEBUG: === STARTUP DEBUGGING ===")
+    debug_event_loop_state()
+    debug_signal_handlers()
+    debug_tasks()
+    print("DEBUG: =========================")
     
     try:
         # Initialize Azure clients
         logger.info("Initializing Azure service clients")
         app_state.aoai_client = AzureOpenAIClient(settings.azure_openai)
+        logger.info("Azure OpenAI client initialized successfully")
+        
         app_state.cosmos_client = CosmosDBClient(settings.cosmos_db)
+        logger.info("Cosmos DB client initialized successfully")
+        
         app_state.gremlin_client = GremlinClient(settings.gremlin)
+        logger.info("Gremlin client initialized successfully")
+        
         app_state.fabric_client = FabricLakehouseClient(
             settings.fabric_lakehouse.sql_endpoint,
             settings.fabric_lakehouse.database,
@@ -134,6 +183,7 @@ async def lifespan(app: FastAPI):
             settings.fabric_lakehouse.connection_timeout,
             dev_mode=settings.dev_mode
         )
+        logger.info("Fabric client initialized successfully")
         
         # Initialize repositories
         logger.info("Initializing data repositories")
@@ -237,7 +287,29 @@ async def lifespan(app: FastAPI):
         
         logger.info("Application startup completed successfully")
         
+        print("DEBUG: === PRE-YIELD DEBUGGING ===")
+        debug_event_loop_state()
+        debug_tasks()
+        print("DEBUG: ============================")
+        
+        # Add a debug marker to confirm we reach the yield point
+        logger.info("About to yield control to the application")
+        print("DEBUG: About to yield - server should now accept requests")
+        
+        # This is where we yield control to the FastAPI application
+        # The yield suspends this coroutine until shutdown is requested
         yield
+        
+        # This should only execute on shutdown
+        logger.info("Lifespan yield returned - shutting down")
+        print("DEBUG: === POST-YIELD DEBUGGING ===")
+        debug_event_loop_state()
+        debug_tasks()
+        print("DEBUG: === POST-YIELD DEBUGGING ===")
+        debug_event_loop_state()
+        debug_tasks()
+        print("DEBUG: Yield returned - application is shutting down")
+        print("DEBUG: ==============================")
         
     except Exception as e:
         logger.error("Failed to start application", error=str(e))
@@ -324,30 +396,83 @@ def configure_middleware(app: FastAPI) -> None:
     # Request logging middleware
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
-        """Log HTTP requests and responses."""
-        start_time = asyncio.get_event_loop().time()
+        """Log HTTP requests and responses with comprehensive debugging."""
+        import asyncio
+        import traceback
         
-        # Log request
+        start_time = asyncio.get_event_loop().time()
+        request_id = str(uuid4())[:8]
+        
+        # Log request start
         logger.info(
             "HTTP request started",
+            request_id=request_id,
             method=request.method,
             url=str(request.url),
             user_agent=request.headers.get("user-agent"),
         )
         
+        print(f"DEBUG: [{request_id}] REQUEST START: {request.method} {request.url}")
+        print(f"DEBUG: [{request_id}] Headers: {dict(request.headers)}")
+        
+        # Debug event loop state before processing
+        loop = asyncio.get_event_loop()
+        tasks_before = asyncio.all_tasks(loop)
+        print(f"DEBUG: [{request_id}] Tasks before request: {len(tasks_before)}")
+        print(f"DEBUG: [{request_id}] Event loop running: {loop.is_running()}, closed: {loop.is_closed()}")
+        
         # Process request
         try:
+            print(f"DEBUG: [{request_id}] About to call next middleware/handler")
             response = await call_next(request)
             duration = asyncio.get_event_loop().time() - start_time
+            
+            print(f"DEBUG: [{request_id}] Handler completed successfully")
+            print(f"DEBUG: [{request_id}] Response status: {response.status_code}")
+            
+            # Debug event loop state after processing
+            tasks_after = asyncio.all_tasks(loop)
+            print(f"DEBUG: [{request_id}] Tasks after request: {len(tasks_after)}")
+            print(f"DEBUG: [{request_id}] Event loop running: {loop.is_running()}, closed: {loop.is_closed()}")
             
             # Log response
             logger.info(
                 "HTTP request completed",
+                request_id=request_id,
                 method=request.method,
                 url=str(request.url),
                 status_code=response.status_code,
                 duration_ms=int(duration * 1000),
             )
+            
+            print(f"DEBUG: [{request_id}] REQUEST COMPLETED successfully")
+            return response
+            
+        except Exception as e:
+            duration = asyncio.get_event_loop().time() - start_time
+            
+            print(f"DEBUG: [{request_id}] EXCEPTION in request processing:")
+            print(f"DEBUG: [{request_id}] Exception type: {type(e).__name__}")
+            print(f"DEBUG: [{request_id}] Exception message: {str(e)}")
+            print(f"DEBUG: [{request_id}] Traceback:\n{traceback.format_exc()}")
+            
+            # Debug event loop state after exception
+            tasks_after = asyncio.all_tasks(loop)
+            print(f"DEBUG: [{request_id}] Tasks after exception: {len(tasks_after)}")
+            print(f"DEBUG: [{request_id}] Event loop running: {loop.is_running()}, closed: {loop.is_closed()}")
+            
+            logger.error(
+                "HTTP request failed",
+                request_id=request_id,
+                method=request.method,
+                url=str(request.url),
+                error=str(e),
+                duration_ms=int(duration * 1000),
+                traceback=traceback.format_exc(),
+            )
+            
+            print(f"DEBUG: [{request_id}] About to re-raise exception")
+            raise
             
             return response
             
@@ -411,12 +536,19 @@ def configure_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):
         """Handle unexpected exceptions with structured logging."""
+        import traceback
+        
         logger.error(
             "Unhandled exception",
             error=str(exc),
             error_type=type(exc).__name__,
             url=str(request.url),
+            traceback=traceback.format_exc(),
         )
+        
+        # Print to console for debugging
+        print(f"UNHANDLED EXCEPTION: {type(exc).__name__}: {str(exc)}")
+        print(f"Traceback:\n{traceback.format_exc()}")
         
         return JSONResponse(
             status_code=500,
@@ -425,6 +557,7 @@ def configure_exception_handlers(app: FastAPI) -> None:
                     "code": 500,
                     "message": "Internal server error" if not settings.debug else str(exc),
                     "type": "internal_error",
+                    "traceback": traceback.format_exc() if settings.debug else None,
                 }
             },
         )
