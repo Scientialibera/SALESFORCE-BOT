@@ -11,6 +11,16 @@ from typing import Optional, List, Dict, Any, Union
 from pydantic import BaseModel, Field
 
 
+class StepStatus(str, Enum):
+    """Step execution status enumeration."""
+    
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
 class PlanType(str, Enum):
     """Plan type enumeration."""
     
@@ -201,3 +211,26 @@ class PlanningResult(BaseModel):
     success: bool = Field(default=True, description="Whether planning succeeded")
     error: Optional[str] = Field(default=None, description="Error message if failed")
     fallback_used: bool = Field(default=False, description="Whether fallback plan was used")
+
+
+class ExecutionResult(BaseModel):
+    """Result of plan execution."""
+    
+    plan_id: str = Field(..., description="Plan ID that was executed")
+    execution_id: str = Field(..., description="Unique execution identifier")
+    
+    # Timestamps
+    started_at: datetime = Field(..., description="Execution start time")
+    completed_at: Optional[datetime] = Field(default=None, description="Execution completion time")
+    
+    # Status and results
+    status: str = Field(..., description="Execution status")
+    step_results: List[Dict[str, Any]] = Field(default_factory=list, description="Results from each step")
+    final_output: str = Field(..., description="Final compiled output")
+    
+    # Error handling
+    error_message: Optional[str] = Field(default=None, description="Error message if execution failed")
+    
+    # Metadata
+    duration_seconds: Optional[float] = Field(default=None, description="Total execution duration")
+    execution_metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional execution metadata")

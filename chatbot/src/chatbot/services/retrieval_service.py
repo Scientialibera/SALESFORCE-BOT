@@ -11,7 +11,7 @@ from datetime import datetime
 import structlog
 
 from chatbot.clients.aoai_client import AOAIClient
-from chatbot.clients.cosmos_client import CosmosClient
+from chatbot.clients.cosmos_client import CosmosDBClient
 from chatbot.models.rbac import RBACContext
 from chatbot.services.cache_service import CacheService
 from chatbot.utils.embeddings import EmbeddingUtils
@@ -25,7 +25,7 @@ class RetrievalService:
     def __init__(
         self,
         aoai_client: AOAIClient,
-        cosmos_client: CosmosClient,
+        cosmos_client: CosmosDBClient,
         cache_service: CacheService,
         embedding_utils: EmbeddingUtils
     ):

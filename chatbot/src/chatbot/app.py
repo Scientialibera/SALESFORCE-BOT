@@ -6,6 +6,7 @@ necessary middleware, routes, and dependencies.
 """
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 import structlog
@@ -48,6 +49,9 @@ from chatbot.services.telemetry_service import TelemetryService
 from chatbot.agents.sql_agent import SQLAgent
 from chatbot.agents.graph_agent import GraphAgent
 
+# Import utilities
+from chatbot.utils.embeddings import EmbeddingUtils
+
 # Import routes
 from chatbot.routes.health import router as health_router
 from chatbot.routes.chat import router as chat_router
@@ -58,7 +62,7 @@ structlog.configure(
         structlog.dev.ConsoleRenderer() if settings.debug else structlog.processors.JSONRenderer(),
     ],
     wrapper_class=structlog.make_filtering_bound_logger(
-        min_level=getattr(structlog.stdlib, settings.telemetry.log_level.upper(), structlog.stdlib.INFO)
+        min_level=getattr(logging, settings.telemetry.log_level.upper(), logging.INFO)
     ),
     logger_factory=structlog.WriteLoggerFactory(),
     cache_logger_on_first_use=True,
@@ -123,7 +127,13 @@ async def lifespan(app: FastAPI):
         app_state.aoai_client = AzureOpenAIClient(settings.azure_openai)
         app_state.cosmos_client = CosmosDBClient(settings.cosmos_db)
         app_state.gremlin_client = GremlinClient(settings.gremlin)
-        app_state.fabric_client = FabricLakehouseClient(settings.fabric_lakehouse)
+        app_state.fabric_client = FabricLakehouseClient(
+            settings.fabric_lakehouse.sql_endpoint,
+            settings.fabric_lakehouse.database,
+            settings.fabric_lakehouse.workspace_id,
+            settings.fabric_lakehouse.connection_timeout,
+            dev_mode=settings.dev_mode
+        )
         
         # Initialize repositories
         logger.info("Initializing data repositories")
@@ -133,23 +143,28 @@ async def lifespan(app: FastAPI):
         )
         app_state.agent_functions_repository = AgentFunctionsRepository(
             app_state.cosmos_client,
-            settings.cosmos_db,
+            settings.cosmos_db.database_name,
+            settings.cosmos_db.agent_functions_container,
         )
         app_state.cache_repository = CacheRepository(
             app_state.cosmos_client,
-            settings.cosmos_db,
+            settings.cosmos_db.database_name,
+            settings.cosmos_db.cache_container,
         )
         app_state.feedback_repository = FeedbackRepository(
             app_state.cosmos_client,
-            settings.cosmos_db,
+            settings.cosmos_db.database_name,
+            settings.cosmos_db.feedback_container,
         )
         app_state.prompts_repository = PromptsRepository(
             app_state.cosmos_client,
-            settings.cosmos_db,
+            settings.cosmos_db.database_name,
+            settings.cosmos_db.prompts_container,
         )
         app_state.sql_schema_repository = SQLSchemaRepository(
             app_state.cosmos_client,
-            settings.cosmos_db,
+            settings.cosmos_db.database_name,
+            settings.cosmos_db.sql_schema_container,
         )
         
         # Initialize services
@@ -157,16 +172,11 @@ async def lifespan(app: FastAPI):
         app_state.rbac_service = RBACService(settings.rbac)
         app_state.telemetry_service = TelemetryService(settings.telemetry)
         app_state.cache_service = CacheService(
-            app_state.cache_repository,
-            settings.cache,
-            app_state.telemetry_service,
+            app_state.cache_repository
         )
         app_state.account_resolver_service = AccountResolverService(
             app_state.aoai_client,
-            app_state.cosmos_client,
-            app_state.cache_service,
-            app_state.telemetry_service,
-            settings.account_resolver,
+            app_state.cache_repository
         )
         app_state.sql_service = SQLService(
             app_state.aoai_client,
@@ -176,9 +186,7 @@ async def lifespan(app: FastAPI):
             settings.fabric_lakehouse,
         )
         app_state.feedback_service = FeedbackService(
-            app_state.feedback_repository,
-            app_state.telemetry_service,
-            settings.feedback,
+            app_state.feedback_repository
         )
         app_state.graph_service = GraphService(
             app_state.gremlin_client,
@@ -188,33 +196,28 @@ async def lifespan(app: FastAPI):
             settings.graph,
         )
         app_state.history_service = HistoryService(
-            app_state.chat_history_repository,
-            app_state.cache_service,
-            app_state.telemetry_service,
-            settings.chat_history,
+            app_state.chat_history_repository
         )
+        app_state.embedding_utils = EmbeddingUtils()
         app_state.retrieval_service = RetrievalService(
             app_state.aoai_client,
             app_state.cosmos_client,
             app_state.cache_service,
-            app_state.telemetry_service,
-            settings.retrieval,
+            app_state.embedding_utils
         )
-        app_state.planner_service = PlannerService(
-            app_state.aoai_client,
-            app_state.agent_functions_repository,
-            app_state.cache_service,
-            app_state.rbac_service,
-            app_state.telemetry_service,
-            settings.planner,
-        )
-        
         # Initialize agents with Semantic Kernel
         logger.info("Initializing Semantic Kernel agents")
         
         # Create Semantic Kernel instance
         from semantic_kernel import Kernel
         kernel = Kernel()
+        
+        app_state.planner_service = PlannerService(
+            kernel,
+            app_state.agent_functions_repository,
+            app_state.prompts_repository,
+            app_state.rbac_service,
+        )
         
         app_state.sql_agent = SQLAgent(
             kernel,

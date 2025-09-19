@@ -12,15 +12,15 @@ import json
 import structlog
 
 from semantic_kernel import Kernel
-from semantic_kernel.planners import SequentialPlanner, StepwisePlanner
+# from semantic_kernel.planners import SequentialPlanner, StepwisePlanner
 from semantic_kernel.core_plugins import ConversationSummaryPlugin, TimePlugin
-from semantic_kernel.planning.sequential_planner.sequential_planner_config import SequentialPlannerConfig
-from semantic_kernel.planning.stepwise_planner.stepwise_planner_config import StepwisePlannerConfig
+# from semantic_kernel.planning.sequential_planner.sequential_planner_config import SequentialPlannerConfig
+# from semantic_kernel.planning.stepwise_planner.stepwise_planner_config import StepwisePlannerConfig
 
 from chatbot.repositories.agent_functions_repository import AgentFunctionsRepository
 from chatbot.repositories.prompts_repository import PromptsRepository
 from chatbot.models.rbac import RBACContext
-from chatbot.models.plan import Plan, PlanStep, ExecutionResult, StepStatus
+from chatbot.models.plan import Plan, ExecutionStep, ExecutionResult, StepStatus, ToolDecision
 from chatbot.services.rbac_service import RBACService
 
 logger = structlog.get_logger(__name__)
@@ -58,25 +58,9 @@ class PlannerService:
     def _configure_planners(self):
         """Configure the available planners."""
         try:
-            # Sequential planner for structured multi-step plans
-            sequential_config = SequentialPlannerConfig(
-                max_iterations=10,
-                max_tokens=4000,
-                excluded_plugins=[],
-                excluded_functions=[]
-            )
-            self.sequential_planner = SequentialPlanner(self.kernel, sequential_config)
-            
-            # Stepwise planner for iterative reasoning
-            stepwise_config = StepwisePlannerConfig(
-                max_iterations=15,
-                max_tokens=4000,
-                excluded_plugins=[],
-                excluded_functions=[]
-            )
-            self.stepwise_planner = StepwisePlanner(self.kernel, stepwise_config)
-            
-            logger.info("Planners configured successfully")
+            # Note: Sequential and Stepwise planners are not available in current Semantic Kernel version
+            # TODO: Update to use current Semantic Kernel planning capabilities
+            logger.info("Planner configuration skipped - using basic kernel functionality")
             
         except Exception as e:
             logger.error("Failed to configure planners", error=str(e))
@@ -186,7 +170,7 @@ class PlannerService:
                 execution_result.step_results.append(step_result)
                 
                 # Check if step failed and should stop execution
-                if step_result["status"] == "failed" and step.required:
+                if step_result["status"] == "failed":
                     execution_result.status = "failed"
                     execution_result.error_message = step_result.get("error_message", "Step execution failed")
                     break
@@ -327,15 +311,19 @@ class PlannerService:
         
         # Extract steps from SK plan
         for i, step in enumerate(sk_plan._steps):
-            plan_step = PlanStep(
+            plan_step = ExecutionStep(
                 step_id=str(uuid4()),
-                step_number=i + 1,
-                function_name=step.plugin_name + "." + step.name if step.plugin_name else step.name,
-                parameters=dict(step.parameters) if step.parameters else {},
+                step_type="tool",
                 description=step.description or f"Execute {step.name}",
-                required=True,
-                status=StepStatus.PENDING,
-                depends_on=[]
+                tool_decision=ToolDecision(
+                    tool_name=step.plugin_name + "." + step.name if step.plugin_name else step.name,
+                    confidence=1.0,
+                    reasoning="Generated from semantic kernel plan",
+                    parameters=dict(step.parameters) if step.parameters else {}
+                ),
+                depends_on=[],
+                can_run_parallel=False,
+                status=StepStatus.PENDING.value
             )
             plan_steps.append(plan_step)
         
@@ -354,7 +342,7 @@ class PlannerService:
     
     async def _execute_step(
         self,
-        step: PlanStep,
+        step: ExecutionStep,
         rbac_context: RBACContext,
         execution_context: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
@@ -373,15 +361,17 @@ class PlannerService:
             logger.info(
                 "Executing plan step",
                 step_id=step.step_id,
-                function_name=step.function_name,
+                tool_name=step.tool_decision.tool_name if step.tool_decision else "unknown",
                 user_id=rbac_context.user_id
             )
             
-            step.status = StepStatus.RUNNING
-            step.started_at = datetime.utcnow()
+            step.status = StepStatus.RUNNING.value
+            
+            if not step.tool_decision:
+                raise ValueError("No tool decision found for step")
             
             # Get function from kernel
-            plugin_name, function_name = self._parse_function_name(step.function_name)
+            plugin_name, function_name = self._parse_function_name(step.tool_decision.tool_name)
             
             if plugin_name:
                 kernel_function = self.kernel.plugins[plugin_name][function_name]
@@ -394,37 +384,34 @@ class PlannerService:
                         break
             
             if not kernel_function:
-                raise ValueError(f"Function not found: {step.function_name}")
+                raise ValueError(f"Function not found: {step.tool_decision.tool_name}")
             
             # Execute the function
             result = await kernel_function.invoke(
-                variables=step.parameters,
+                variables=step.tool_decision.parameters,
                 context=execution_context
             )
             
-            step.status = StepStatus.COMPLETED
-            step.completed_at = datetime.utcnow()
-            step.output = str(result)
+            step.status = StepStatus.COMPLETED.value
+            step.result = {"output": str(result), "success": True}
             
             step_result = {
                 "step_id": step.step_id,
                 "status": "completed",
-                "output": step.output,
-                "execution_time": (step.completed_at - step.started_at).total_seconds()
+                "output": str(result),
+                "execution_time": 0  # We don't have timing fields in ExecutionStep
             }
             
             logger.info(
                 "Step executed successfully",
-                step_id=step.step_id,
-                execution_time=step_result["execution_time"]
+                step_id=step.step_id
             )
             
             return step_result
             
         except Exception as e:
-            step.status = StepStatus.FAILED
-            step.completed_at = datetime.utcnow()
-            step.error_message = str(e)
+            step.status = StepStatus.FAILED.value
+            step.error = str(e)
             
             logger.error(
                 "Step execution failed",
@@ -436,7 +423,7 @@ class PlannerService:
                 "step_id": step.step_id,
                 "status": "failed",
                 "error_message": str(e),
-                "execution_time": (step.completed_at - step.started_at).total_seconds()
+                "execution_time": 0
             }
     
     def _parse_function_name(self, function_name: str) -> tuple[Optional[str], str]:

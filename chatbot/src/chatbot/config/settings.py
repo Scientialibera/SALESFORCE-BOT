@@ -24,6 +24,10 @@ class AzureOpenAISettings(BaseSettings):
     
     class Config:
         env_prefix = "AOAI_"
+        env_file = ".env"
+        extra = "ignore"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class CosmosDBSettings(BaseSettings):
@@ -43,6 +47,10 @@ class CosmosDBSettings(BaseSettings):
     
     class Config:
         env_prefix = "COSMOS_"
+        env_file = ".env"
+        extra = "ignore"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class GremlinSettings(BaseSettings):
@@ -56,6 +64,10 @@ class GremlinSettings(BaseSettings):
     
     class Config:
         env_prefix = "GREMLIN_"
+        env_file = ".env"
+        extra = "ignore"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class SearchSettings(BaseSettings):
@@ -68,6 +80,10 @@ class SearchSettings(BaseSettings):
     
     class Config:
         env_prefix = "SEARCH_"
+        env_file = ".env"
+        extra = "ignore"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class FabricLakehouseSettings(BaseSettings):
@@ -83,6 +99,10 @@ class FabricLakehouseSettings(BaseSettings):
     
     class Config:
         env_prefix = "FABRIC_"
+        env_file = ".env"
+        extra = "ignore"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class RBACSettings(BaseSettings):
@@ -95,6 +115,8 @@ class RBACSettings(BaseSettings):
     
     class Config:
         env_prefix = "RBAC_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class TelemetrySettings(BaseSettings):
@@ -108,6 +130,8 @@ class TelemetrySettings(BaseSettings):
     
     class Config:
         env_prefix = "TELEMETRY_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class CacheSettings(BaseSettings):
@@ -119,6 +143,8 @@ class CacheSettings(BaseSettings):
     
     class Config:
         env_prefix = "CACHE_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class AccountResolverSettings(BaseSettings):
@@ -131,6 +157,8 @@ class AccountResolverSettings(BaseSettings):
     
     class Config:
         env_prefix = "ACCOUNT_RESOLVER_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class FeedbackSettings(BaseSettings):
@@ -142,6 +170,8 @@ class FeedbackSettings(BaseSettings):
     
     class Config:
         env_prefix = "FEEDBACK_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class ChatHistorySettings(BaseSettings):
@@ -154,6 +184,8 @@ class ChatHistorySettings(BaseSettings):
     
     class Config:
         env_prefix = "CHAT_HISTORY_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class RetrievalSettings(BaseSettings):
@@ -167,6 +199,8 @@ class RetrievalSettings(BaseSettings):
     
     class Config:
         env_prefix = "RETRIEVAL_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class GraphSettings(BaseSettings):
@@ -179,6 +213,8 @@ class GraphSettings(BaseSettings):
     
     class Config:
         env_prefix = "GRAPH_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class PlannerSettings(BaseSettings):
@@ -191,6 +227,8 @@ class PlannerSettings(BaseSettings):
     
     class Config:
         env_prefix = "PLANNER_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class AgentSettings(BaseSettings):
@@ -203,6 +241,8 @@ class AgentSettings(BaseSettings):
     
     class Config:
         env_prefix = "AGENT_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class SecuritySettings(BaseSettings):
@@ -216,6 +256,8 @@ class SecuritySettings(BaseSettings):
     
     class Config:
         env_prefix = "SECURITY_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class FeatureFlagsSettings(BaseSettings):
@@ -228,6 +270,8 @@ class FeatureFlagsSettings(BaseSettings):
     
     class Config:
         env_prefix = "FEATURE_"
+        env_file = ".env"
+        extra = "ignore"
 
 
 class ApplicationSettings(BaseSettings):
@@ -238,6 +282,7 @@ class ApplicationSettings(BaseSettings):
     version: str = Field(default="1.0.0", description="Application version")
     debug: bool = Field(default=False, description="Debug mode")
     environment: str = Field(default="development", description="Environment (development, staging, production)")
+    dev_mode: bool = Field(default=False, description="Development mode - uses dummy data instead of real services")
     
     # API configuration
     api_host: str = Field(default="0.0.0.0", description="API host")
@@ -272,6 +317,7 @@ class ApplicationSettings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"
     
     @validator("cors_origins", pre=True)
     def parse_cors_origins(cls, v):
@@ -283,3 +329,4 @@ class ApplicationSettings(BaseSettings):
 
 # Global settings instance
 settings = ApplicationSettings()
+

@@ -4,7 +4,7 @@
 
 The **Salesforce Account Q&A Chatbot** is an intelligent conversational AI system that answers questions about customer accounts by combining structured Salesforce data and unstructured contract documents. Built with **Semantic Kernel** and a **planner-first agentic architecture**, it provides natural language access to account information with proper source citations and enterprise-grade security.
 
-## 🏗️ Architecture
+##  Architecture
 
 ### Core Components
 
@@ -36,7 +36,7 @@ User Query → Chatbot → SQL Agent (Fabric) + Graph Agent (Cosmos) → Respons
 - **Deployment**: Docker, Azure Container Apps
 - **Monitoring**: Application Insights, OpenTelemetry
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 
@@ -90,7 +90,7 @@ User Query → Chatbot → SQL Agent (Fabric) + Graph Agent (Cosmos) → Respons
      -d '{"message": "Show me accounts for Microsoft", "chat_id": "test-123"}'
    ```
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 chatbot/
@@ -146,7 +146,7 @@ chatbot/
 └── README.md               # This file
 ```
 
-## 🔧 Configuration
+##  Configuration
 
 ### Environment Variables
 
@@ -210,7 +210,7 @@ MAX_TOKENS_PER_REQUEST=4000
 ENABLE_SAFETY_FILTERS=true
 ```
 
-## 🤖 AI Agent Architecture
+##  AI Agent Architecture
 
 ### Planner-First Design
 
@@ -252,7 +252,7 @@ The system uses advanced TF-IDF vectorization for accurate account entity matchi
 - Provides semantic similarity ranking
 - Includes confidence scores
 
-## 🔐 Security & RBAC
+##  Security & RBAC
 
 ### Authentication Flow
 
@@ -276,7 +276,7 @@ The system uses advanced TF-IDF vectorization for accurate account entity matchi
 - **Content Policies**: Block unsafe or inappropriate content
 - **Audit Logging**: Comprehensive telemetry for compliance
 
-## 📊 Monitoring & Telemetry
+##  Monitoring & Telemetry
 
 ### Metrics Tracked
 
@@ -292,7 +292,7 @@ The system uses advanced TF-IDF vectorization for accurate account entity matchi
 - **Structured Logging**: Consistent log format with correlation IDs
 - **Health Checks**: Comprehensive dependency monitoring
 
-## 🐳 Deployment
+## Deployment
 
 ### Docker Build
 
@@ -337,7 +337,7 @@ az containerapp create \
 - Enhanced security, audit logging
 - Performance monitoring and alerting
 
-## 🧪 Testing
+## Testing
 
 ### Unit Tests
 
@@ -366,7 +366,7 @@ ab -n 1000 -c 10 -H "Authorization: Bearer TOKEN" \
 # Or use Azure Load Testing for comprehensive testing
 ```
 
-## 🔧 Development Guide
+## Development Guide
 
 ### Adding New Agents
 
@@ -390,7 +390,7 @@ ab -n 1000 -c 10 -H "Authorization: Bearer TOKEN" \
 3. **Filter Updates**: Modify filters to use new permissions
 4. **Migration**: Plan data migration if schema changes
 
-## 🤝 Contributing
+## Contributing
 
 ### Code Style
 
@@ -414,7 +414,7 @@ ab -n 1000 -c 10 -H "Authorization: Bearer TOKEN" \
 - **Input Validation**: Validate and sanitize all user inputs
 - **Error Handling**: Don't leak sensitive information in errors
 
-## 📚 API Documentation
+## API Documentation
 
 ### Chat Endpoint
 
@@ -459,7 +459,7 @@ Content-Type: application/json
 }
 ```
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -493,11 +493,10 @@ export LOG_LEVEL=DEBUG
 python -m src.chatbot.main --debug
 ```
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙋‍♂️ Support
 
 For questions or issues:
 
@@ -507,5 +506,3 @@ For questions or issues:
 4. **Features**: Discuss new features in GitHub discussions
 
 ---
-
-**Built with ❤️ using Azure AI and Semantic Kernel**

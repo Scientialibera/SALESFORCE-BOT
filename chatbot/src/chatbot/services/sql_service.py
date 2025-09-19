@@ -282,12 +282,12 @@ class SQLService:
             
             # Add account filtering if accounts are specified
             if allowed_accounts:
-                account_filter = f"account_id IN ({','.join(f'\\'{acc}\\'' for acc in allowed_accounts)})"
+                account_filter = f"account_id IN ({','.join(f"'{acc}'" for acc in allowed_accounts)})"
                 filtered_query = self._add_where_clause(filtered_query, account_filter)
             
             # Add territory filtering if territories are specified
             if allowed_territories:
-                territory_filter = f"territory IN ({','.join(f'\\'{terr}\\'' for terr in allowed_territories)})"
+                territory_filter = f"territory IN ({','.join(f"'{terr}'" for terr in allowed_territories)})"
                 filtered_query = self._add_where_clause(filtered_query, territory_filter)
             
             # Add user-specific filtering (e.g., for sales reps seeing only their data)

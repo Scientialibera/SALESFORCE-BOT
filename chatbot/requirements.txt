@@ -1,38 +1,40 @@
 # Core web framework and async runtime
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-gunicorn==21.2.0
+fastapi
+uvicorn[standard]
+gunicorn
+email-validator
+sqlparse
 
 # Semantic Kernel and AI libraries
-semantic-kernel==0.9.1b1
-openai==1.3.7
+semantic-kernel
+openai
 
 # Azure SDK packages with Managed Identity support
-azure-identity==1.15.0
-azure-cosmos==4.5.1
-azure-search-documents==11.4.0
-azure-keyvault-secrets==4.7.0
-azure-monitor-opentelemetry==1.2.0
-azure-storage-blob==12.19.0
+azure-identity
+azure-cosmos
+azure-search-documents
+azure-keyvault-secrets
+azure-monitor-opentelemetry
+azure-storage-blob
 
 # Data processing and validation
-pydantic==2.5.0
-pydantic-settings==2.1.0
-numpy==1.25.2
-scipy==1.11.4
+pydantic
+pydantic-settings
+numpy
+scipy
 
 # Machine learning for TF-IDF and text processing
-scikit-learn==1.3.2
-nltk==3.8.1
-spacy==3.7.2
+scikit-learn
+nltk
+spacy
 
 # Database and graph clients
-gremlinpython==3.7.0
-pyodbc==5.0.1
+gremlinpython
+pyodbc
 
 # Utilities
-httpx==0.25.2
-python-multipart==0.0.6
-python-jose[cryptography]==3.3.0
-structlog==23.2.3
-tenacity==8.2.3
+httpx
+python-multipart
+python-jose[cryptography]
+structlog
+tenacity

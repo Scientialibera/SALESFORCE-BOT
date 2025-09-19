@@ -250,6 +250,38 @@ class AggregatedResult(BaseModel):
         return successful / len(self.agent_results)
 
 
+class ToolDefinition(BaseModel):
+    """Tool/function definition for agent capabilities."""
+    
+    name: str = Field(..., description="Tool name")
+    description: str = Field(..., description="Tool description")
+    parameters: Dict[str, Any] = Field(default_factory=dict, description="Tool parameters schema")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+    
+    class Config:
+        """Pydantic configuration."""
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+        }
+
+
+class QueryResult(BaseModel):
+    """Result from a database query execution."""
+    
+    success: bool = Field(..., description="Whether query executed successfully")
+    data: Optional[DataTable] = Field(default=None, description="Query result data")
+    error: Optional[str] = Field(default=None, description="Error message if failed")
+    query: str = Field(..., description="Original SQL query")
+    execution_time_ms: Optional[int] = Field(default=None, description="Query execution time in milliseconds")
+    row_count: int = Field(default=0, description="Number of rows returned")
+    
+    class Config:
+        """Pydantic configuration."""
+        json_encoders = {
+            datetime: lambda v: v.isoformat(),
+        }
+
+
 class FeedbackData(BaseModel):
     """User feedback on results."""
     

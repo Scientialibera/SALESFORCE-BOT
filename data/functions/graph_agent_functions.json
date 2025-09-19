@@ -1,0 +1,134 @@
+{
+  "functions": [
+    {
+      "name": "find_related_accounts",
+      "description": "Find accounts related to a given account through various relationship types and connection paths.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "description": "The ID of the source account to find relationships for"
+          },
+          "relationship_types": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Types of relationships to search: parent, child, partner, vendor, competitor",
+            "default": ["parent", "child", "partner"]
+          },
+          "max_depth": {
+            "type": "integer",
+            "description": "Maximum degrees of separation to search (1-4)",
+            "default": 2,
+            "minimum": 1,
+            "maximum": 4
+          }
+        },
+        "required": ["account_id"]
+      }
+    },
+    {
+      "name": "analyze_account_hierarchy",
+      "description": "Analyze the organizational hierarchy and structure for an account or account family.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "root_account_id": {
+            "type": "string",
+            "description": "The ID of the root/parent account to analyze"
+          },
+          "include_subsidiaries": {
+            "type": "boolean",
+            "description": "Whether to include subsidiary companies in the analysis",
+            "default": true
+          },
+          "hierarchy_levels": {
+            "type": "integer",
+            "description": "Number of hierarchy levels to traverse",
+            "default": 3
+          }
+        },
+        "required": ["root_account_id"]
+      }
+    },
+    {
+      "name": "discover_connection_paths",
+      "description": "Discover connection paths between two accounts and analyze relationship strength.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "source_account_id": {
+            "type": "string",
+            "description": "The ID of the source account"
+          },
+          "target_account_id": {
+            "type": "string",
+            "description": "The ID of the target account"
+          },
+          "max_path_length": {
+            "type": "integer",
+            "description": "Maximum length of connection paths to find",
+            "default": 3
+          },
+          "include_contact_connections": {
+            "type": "boolean",
+            "description": "Whether to include connections through shared contacts",
+            "default": true
+          }
+        },
+        "required": ["source_account_id", "target_account_id"]
+      }
+    },
+    {
+      "name": "find_similar_accounts",
+      "description": "Find accounts similar to a given account based on industry, size, location, or other attributes.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reference_account_id": {
+            "type": "string",
+            "description": "The ID of the reference account to find similar accounts for"
+          },
+          "similarity_criteria": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Criteria for similarity: industry, size, location, revenue, employee_count",
+            "default": ["industry", "size"]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of similar accounts to return",
+            "default": 10
+          }
+        },
+        "required": ["reference_account_id"]
+      }
+    },
+    {
+      "name": "analyze_network_influence",
+      "description": "Analyze the network influence and centrality of an account within its business network.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "description": "The ID of the account to analyze network influence for"
+          },
+          "network_scope": {
+            "type": "string",
+            "enum": ["industry", "geography", "global"],
+            "description": "The scope of the network to analyze",
+            "default": "industry"
+          },
+          "influence_metrics": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Influence metrics to calculate: centrality, connectivity, reach",
+            "default": ["centrality", "connectivity"]
+          }
+        },
+        "required": ["account_id"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "functions": [
+    {
+      "name": "execute_sql_query",
+      "description": "Execute SQL queries against Salesforce data to retrieve account performance, sales metrics, and analytics data.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The SQL query to execute against the Salesforce data warehouse"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of rows to return (default: 100, max: 1000)",
+            "default": 100
+          },
+          "format": {
+            "type": "string",
+            "enum": ["table", "summary", "chart"],
+            "description": "How to format the query results",
+            "default": "table"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "get_account_metrics",
+      "description": "Get key performance metrics for a specific account or set of accounts.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "account_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of account IDs to analyze"
+          },
+          "metrics": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Specific metrics to retrieve: revenue, opportunities, activities, engagement"
+          },
+          "time_period": {
+            "type": "string",
+            "description": "Time period for metrics: last_30_days, last_quarter, last_year, ytd",
+            "default": "last_quarter"
+          }
+        },
+        "required": ["account_ids"]
+      }
+    },
+    {
+      "name": "analyze_sales_trends",
+      "description": "Analyze sales trends and patterns across accounts, territories, or time periods.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": ["account", "territory", "product", "rep"],
+            "description": "The dimension to analyze trends by"
+          },
+          "period": {
+            "type": "string",
+            "enum": ["monthly", "quarterly", "yearly"],
+            "description": "Time period granularity for trend analysis",
+            "default": "monthly"
+          },
+          "filters": {
+            "type": "object",
+            "description": "Additional filters to apply to the analysis"
+          }
+        },
+        "required": ["dimension"]
+      }
+    },
+    {
+      "name": "generate_performance_report",
+      "description": "Generate comprehensive performance reports for accounts, territories, or sales teams.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "report_type": {
+            "type": "string",
+            "enum": ["account_summary", "pipeline_analysis", "activity_report", "conversion_metrics"],
+            "description": "Type of performance report to generate"
+          },
+          "scope": {
+            "type": "string",
+            "description": "Scope of the report: specific account IDs, territory, or 'all'"
+          },
+          "include_charts": {
+            "type": "boolean",
+            "description": "Whether to include visual charts in the report",
+            "default": true
+          }
+        },
+        "required": ["report_type", "scope"]
+      }
+    }
+  ]
+}

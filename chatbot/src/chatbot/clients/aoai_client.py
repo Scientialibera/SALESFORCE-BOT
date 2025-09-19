@@ -193,3 +193,7 @@ class AzureOpenAIClient:
             await self._credential.close()
         
         logger.info("Azure OpenAI client closed")
+
+
+# Alias for backward compatibility
+AOAIClient = AzureOpenAIClient

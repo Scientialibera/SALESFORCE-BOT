@@ -19,7 +19,7 @@ from opentelemetry.trace import Status, StatusCode
 from opentelemetry.metrics import get_meter
 
 from chatbot.models.rbac import RBACContext
-from chatbot.clients.cosmos_client import CosmosClient
+from chatbot.clients.cosmos_client import CosmosDBClient
 
 logger = structlog.get_logger(__name__)
 
@@ -70,7 +70,7 @@ class TelemetryService:
     
     def __init__(
         self,
-        cosmos_client: CosmosClient,
+        cosmos_client: CosmosDBClient,
         app_insights_connection_string: Optional[str] = None,
         enable_detailed_tracking: bool = True
     ):

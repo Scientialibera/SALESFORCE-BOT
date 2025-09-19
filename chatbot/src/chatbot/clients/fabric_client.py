@@ -23,7 +23,8 @@ class FabricLakehouseClient:
         lakehouse_sql_endpoint: str,
         lakehouse_database: str,
         lakehouse_workspace_id: Optional[str] = None,
-        connection_timeout: int = 30
+        connection_timeout: int = 30,
+        dev_mode: bool = False
     ):
         """
         Initialize the Fabric lakehouse client.
@@ -33,15 +34,58 @@ class FabricLakehouseClient:
             lakehouse_database: Database name in the lakehouse
             lakehouse_workspace_id: Optional workspace ID for REST API calls
             connection_timeout: Connection timeout in seconds
+            dev_mode: If True, returns dummy data instead of connecting to real lakehouse
         """
         self.lakehouse_sql_endpoint = lakehouse_sql_endpoint
         self.lakehouse_database = lakehouse_database
         self.lakehouse_workspace_id = lakehouse_workspace_id
         self.connection_timeout = connection_timeout
-        self.credential = DefaultAzureCredential()
+        self.dev_mode = dev_mode
         
-        # Build SQL connection string using Azure AD authentication
-        self.connection_string = self._build_connection_string()
+        if not self.dev_mode:
+            self.credential = DefaultAzureCredential()
+            # Build SQL connection string using Azure AD authentication
+            self.connection_string = self._build_connection_string()
+        else:
+            logger.info("Fabric client running in dev mode - using dummy data")
+    
+    def _get_dummy_document_data(self) -> List[Dict[str, Any]]:
+        """Generate dummy document data for testing."""
+        return [
+            {
+                "file_id": "doc_001",
+                "account_id": "acc_salesforce",
+                "file_name": "Salesforce_Master_Agreement_2024.pdf",
+                "file_text": "This Master Service Agreement is entered into between Salesforce and the Customer. The agreement covers software licensing, support services, and data processing terms. Key provisions include: 1) Service Level Agreements with 99.5% uptime guarantee, 2) Data security and privacy protections, 3) Intellectual property rights, 4) Termination clauses and data export procedures.",
+                "file_summary": "Master Service Agreement between Salesforce and customer covering licensing, support, and data processing terms with SLA guarantees.",
+                "sharepoint_url": "https://company.sharepoint.com/contracts/Salesforce_Master_Agreement_2024.pdf",
+                "last_modified": datetime.now(),
+                "content_type": "application/pdf",
+                "file_size": 245760
+            },
+            {
+                "file_id": "doc_002", 
+                "account_id": "acc_microsoft",
+                "file_name": "Microsoft_Enterprise_Agreement_2024.pdf",
+                "file_text": "Microsoft Enterprise Agreement for software licensing and cloud services. This agreement provides volume licensing for Microsoft 365, Azure, and other enterprise products. Terms include: 1) Volume discount pricing, 2) Annual true-up process, 3) Software Assurance benefits, 4) Usage rights and compliance obligations.",
+                "file_summary": "Microsoft Enterprise Agreement covering volume licensing for Microsoft 365, Azure and enterprise products with volume discounts.",
+                "sharepoint_url": "https://company.sharepoint.com/contracts/Microsoft_Enterprise_Agreement_2024.pdf",
+                "last_modified": datetime.now(),
+                "content_type": "application/pdf", 
+                "file_size": 342150
+            },
+            {
+                "file_id": "doc_003",
+                "account_id": "acc_oracle",
+                "file_name": "Oracle_Database_License_Agreement.pdf",
+                "file_text": "Oracle Database licensing agreement for enterprise deployment. Covers Oracle Database Enterprise Edition licensing for production and development environments. Key terms: 1) Named User Plus licensing model, 2) High Availability and disaster recovery rights, 3) Development and testing usage permissions, 4) Audit and compliance requirements.",
+                "file_summary": "Oracle Database Enterprise Edition licensing agreement with Named User Plus model and high availability rights.",
+                "sharepoint_url": "https://company.sharepoint.com/contracts/Oracle_Database_License_Agreement.pdf",
+                "last_modified": datetime.now(),
+                "content_type": "application/pdf",
+                "file_size": 189440
+            }
+        ]
     
     def _build_connection_string(self) -> str:
         """Build connection string for lakehouse SQL endpoint."""
@@ -70,6 +114,17 @@ class FabricLakehouseClient:
         Returns:
             Dictionary with document content and metadata
         """
+        # Return dummy data in dev mode
+        if self.dev_mode:
+            dummy_docs = self._get_dummy_document_data()
+            for doc in dummy_docs:
+                if doc["file_id"] == document_id:
+                    if account_id is None or doc["account_id"] == account_id:
+                        logger.info(f"Returning dummy document data for {document_id}")
+                        return doc
+            logger.info(f"No dummy document found for {document_id}")
+            return None
+        
         try:
             query = """
             SELECT 
@@ -129,6 +184,19 @@ class FabricLakehouseClient:
         Returns:
             List of document dictionaries
         """
+        # Return dummy data in dev mode
+        if self.dev_mode:
+            dummy_docs = self._get_dummy_document_data()
+            matched_docs = []
+            for doc_id in document_ids:
+                for doc in dummy_docs:
+                    if doc["file_id"] == doc_id:
+                        if account_id is None or doc["account_id"] == account_id:
+                            matched_docs.append(doc)
+                            break
+            logger.info(f"Returning {len(matched_docs)} dummy documents")
+            return matched_docs
+        
         try:
             if not document_ids:
                 return []
@@ -439,3 +507,8 @@ class FabricLakehouseClient:
         except Exception as e:
             logger.error(f"Failed to get table info for {table_name}: {e}")
             return {"table_name": table_name, "columns": [], "row_count": 0}
+    
+    async def close(self):
+        """Close the client and clean up resources."""
+        # No specific cleanup needed for ODBC connections as they auto-close
+        logger.info("Fabric lakehouse client closed")
