@@ -12,6 +12,7 @@ from azure.identity import DefaultAzureCredential
 from gremlin_python.driver import client
 from gremlin_python.driver.aiohttp import transport
 from gremlin_python.driver import serializer
+from urllib.parse import urlparse
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -78,10 +79,10 @@ class GremlinClient:
             # Create a new client for each query to avoid event loop conflicts
             token = self._credential.get_token("https://cosmos.azure.com/.default")
             
-            # Parse endpoint to get host and port
-            endpoint_parts = self.settings.endpoint.replace("gremlin://", "").split(":")
-            host = endpoint_parts[0]
-            port = int(endpoint_parts[1]) if len(endpoint_parts) > 1 else 443
+            # Parse endpoint URL to get host and port (support https:// or gremlin://)
+            parsed = urlparse(self.settings.endpoint)
+            host = parsed.hostname or self.settings.endpoint
+            port = parsed.port or 443
             
             # Create client with proper configuration
             gremlin_client = client.Client(

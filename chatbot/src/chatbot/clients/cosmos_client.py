@@ -69,8 +69,21 @@ class CosmosDBClient:
         """Get or create database."""
         if self._database is None:
             client = await self._get_client()
-            self._database = client.get_database_client(self.settings.database_name)
-            logger.debug("Connected to database", database=self.settings.database_name)
+            # Attempt to get existing database; if not found, create it.
+            try:
+                database = client.get_database_client(self.settings.database_name)
+                # touch/read to verify existence
+                await database.read()
+                self._database = database
+                logger.debug("Connected to existing database", database=self.settings.database_name)
+
+            except exceptions.CosmosResourceNotFoundError:
+                logger.info("Database not found, creating new database", database=self.settings.database_name)
+                self._database = await client.create_database(self.settings.database_name)
+                logger.info("Created new database", database=self.settings.database_name)
+            except Exception as e:
+                logger.error("Failed to get or create database", database=self.settings.database_name, error=str(e))
+                raise
         
         return self._database
     
@@ -87,21 +100,38 @@ class CosmosDBClient:
             database = await self._get_database()
             
             try:
-                # Try to get existing container
+                # Try to get existing container (async SDK pattern)
                 container = database.get_container_client(container_name)
-                await container.read()  # Test if container exists
+                await container.read()
                 self._containers[container_name] = container
                 logger.debug("Connected to existing container", container=container_name)
-                
+
             except exceptions.CosmosResourceNotFoundError:
                 # Create container if it doesn't exist
-                container = await database.create_container(
-                    id=container_name,
-                    partition_key=PartitionKey(path=partition_key),
-                    offer_throughput=400,  # Minimum RU/s
-                )
-                self._containers[container_name] = container
-                logger.info("Created new container", container=container_name)
+                try:
+                    container = await database.create_container(
+                        id=container_name,
+                        partition_key=PartitionKey(path=partition_key),
+                        offer_throughput=400,  # Minimum RU/s
+                    )
+                    self._containers[container_name] = container
+                    logger.info("Created new container", container=container_name)
+                except Exception as e:
+                    # Common cause: AAD token cannot perform data-plane management operations.
+                    if "cannot be authorized by AAD token" in str(e) or "Request blocked by Auth" in str(e):
+                        logger.error(
+                            "Failed to create container due to AAD data-plane authorization. "
+                            "Cosmos may require key auth for management operations or pre-created containers. "
+                            "See https://aka.ms/cosmos-native-rbac for details.",
+                            container=container_name,
+                            error=str(e)
+                        )
+                    else:
+                        logger.error("Failed to create container", container=container_name, error=str(e))
+                    raise
+            except Exception as e:
+                logger.error("Failed to get container", container=container_name, error=str(e))
+                raise
         
         return self._containers[container_name]
     

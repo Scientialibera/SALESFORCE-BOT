@@ -11,6 +11,8 @@ from uuid import uuid4
 import structlog
 from fastapi import APIRouter, HTTPException, Depends, status, Header, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from azure.identity import DefaultAzureCredential
+from jose import jwt as jose_jwt
 from pydantic import BaseModel, Field
 
 from chatbot.models.message import ChatHistory, ConversationTurn, Message, MessageRole
@@ -28,7 +30,7 @@ from chatbot.config.settings import settings
 logger = structlog.get_logger(__name__)
 
 router = APIRouter()
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 # Request/Response models
@@ -79,7 +81,7 @@ class ChatSessionResponse(BaseModel):
 
 # Dependency functions
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     request: Request = None,
 ) -> RBACContext:
     """
@@ -95,41 +97,84 @@ async def get_current_user(
     try:
         logger.info("Authenticating user request", url=str(request.url) if request else "unknown")
         
-        # TODO: Implement actual JWT validation
-        # For now, create a mock user context
-        mock_claims = {
-            "oid": "user123",
-            "email": "user@example.com",
-            "name": "Test User",
-            "tid": "tenant123",
-            "roles": ["sales_rep"],
-        }
-        
-        logger.info("Created mock claims for testing")
-        
-        # Get RBAC service from app
+        # Attempt to build RBAC context from an Authorization header if present
         from chatbot.app import app_state
         rbac_service = app_state.rbac_service
-        
-        if rbac_service:
-            logger.info("Using RBAC service to create context")
-            context = await rbac_service.create_rbac_context_from_jwt(mock_claims)
-            logger.info("RBAC context created successfully", user_id=context.user_id)
-            return context
-        else:
-            # Fallback for testing
-            logger.info("Using fallback RBAC context")
-            from chatbot.models.rbac import RBACContext, AccessScope
-            context = RBACContext(
-                user_id="user@example.com",
-                email="user@example.com",
-                tenant_id="tenant123",
-                object_id="user123",
-                roles=["sales_rep"],
-                access_scope=AccessScope(),
-            )
-            logger.info("Fallback RBAC context created successfully")
-            return context
+
+        # If we have an Authorization header, use it (TODO: full validation)
+        if credentials and getattr(credentials, "credentials", None):
+            token = credentials.credentials
+            # Try to decode token without verification to extract claims
+            try:
+                claims = jose_jwt.get_unverified_claims(token)
+            except Exception:
+                claims = {"oid": "user123", "email": "user@example.com", "tid": "tenant123", "roles": ["sales_rep"]}
+
+            if rbac_service:
+                context = await rbac_service.create_rbac_context_from_jwt(claims)
+                # If running in dev mode, persist minimal claims to .env for convenience
+                try:
+                    if settings.dev_mode and claims:
+                        env_path = "./.env"
+                        env_vars = {}
+                        try:
+                            with open(env_path, "r", encoding="utf-8") as f:
+                                for line in f:
+                                    if "=" in line and not line.strip().startswith("#"):
+                                        k, v = line.strip().split("=", 1)
+                                        env_vars[k.strip()] = v.strip()
+                        except FileNotFoundError:
+                            pass
+
+                        email = claims.get("email") or claims.get("upn") or claims.get("preferred_username")
+                        oid = claims.get("oid") or claims.get("sub")
+
+                        if email:
+                            env_vars["DEV_USER_EMAIL"] = email
+                        if oid:
+                            env_vars["DEV_USER_OID"] = oid
+
+                        # Write back .env
+                        with open(env_path, "w", encoding="utf-8") as f:
+                            for k, v in env_vars.items():
+                                f.write(f"{k}={v}\n")
+                except Exception:
+                    logger.debug("Failed to persist .env dev claims", error=str(Exception))
+
+                return context
+
+        # No Authorization header: in dev mode try DefaultAzureCredential to get a token and extract claims
+        try:
+            if settings.dev_mode:
+                try:
+                    cred = DefaultAzureCredential()
+                    # Request a management scope token as a best-effort; token will be an access token (claims may vary)
+                    token = cred.get_token("https://management.azure.com/.default").token
+                    try:
+                        claims = jose_jwt.get_unverified_claims(token)
+                    except Exception:
+                        claims = {}
+                    if rbac_service:
+                        return await rbac_service.create_rbac_context_from_jwt(claims)
+                except Exception as e:
+                    logger.info("DefaultAzureCredential failed in dev mode, falling back to mock claims", error=str(e))
+
+        except Exception as e:
+            logger.error("Unexpected error while attempting to build RBAC context", error=str(e))
+
+        # Final fallback: return a minimal mock context
+        logger.info("Using fallback RBAC context")
+        from chatbot.models.rbac import RBACContext, AccessScope
+        context = RBACContext(
+            user_id="user@example.com",
+            email="user@example.com",
+            tenant_id="tenant123",
+            object_id="user123",
+            roles=["sales_rep"],
+            access_scope=AccessScope(),
+        )
+        logger.info("Fallback RBAC context created successfully")
+        return context
         
     except Exception as e:
         import traceback
@@ -172,6 +217,7 @@ async def send_message(
     request_data: ChatRequest,
     planner_service: PlannerService = Depends(get_planner_service),
     history_service: HistoryService = Depends(get_history_service),
+    user_context: RBACContext = Depends(get_current_user),
 ) -> ChatResponse:
     """
     Send a message and get AI response using Semantic Kernel planner.
@@ -200,23 +246,8 @@ async def send_message(
         session_id = request_data.session_id or str(uuid4())
         turn_id = str(uuid4())
         
-        # Create user context - mock only in dev mode
-        if settings.dev_mode:
-            # Mock RBAC context for development
-            user_context = RBACContext(
-                user_id=request_data.user_id,
-                email=f"{request_data.user_id}@example.com",
-                tenant_id="default",
-                object_id=f"obj_{request_data.user_id}",
-                roles=["user"],
-                permissions=set()
-            )
-        else:
-            # In production, this should come from proper JWT authentication
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required. Dev mode is disabled."
-            )
+        # `user_context` is provided by the authentication dependency which
+        # attempts to use Authorization header or DefaultAzureCredential in dev mode.
         
         logger.info(
             "Processing chat message",

@@ -86,12 +86,14 @@ class GraphAgent:
             JSON string containing query results
         """
         try:
-            # Create RBAC context
+            # Create RBAC context (include email and object_id to satisfy RBAC model)
             rbac_context = RBACContext(
                 user_id=user_id,
+                email=f"{user_id}@example.com",
                 tenant_id="default",
+                object_id=f"obj_{user_id}",
                 roles=["user"],
-                permissions=[]
+                permissions=set()
             )
             
             # For simplicity, route to find_account_relationships function

@@ -651,6 +651,41 @@ Amazon"""
             # TODO: Implement actual account fetching from SQL schema repository
             # For now, return mock accounts based on user roles
             mock_accounts = self._get_mock_accounts_for_user(rbac_context)
+
+                    # Backwards-compatible adapter expected by some agents
+                    async def resolve_entities(
+                        self,
+                        user_query: str,
+                        rbac_context: RBACContext,
+                        confidence_threshold: Optional[float] = None,
+                    ) -> List[Dict[str, Any]]:
+                        """
+                        Adapter method to provide a simple list of resolved entity dicts
+                        when callers (like older agents) expect `resolve_entities`.
+                        Returns list of {id, name, confidence}.
+                        """
+                        if confidence_threshold is None:
+                            confidence_threshold = self.confidence_threshold
+
+                        resolution = await self.resolve_account(user_query, rbac_context)
+                        resolved = resolution.get("resolved_accounts") or []
+
+                        out = []
+                        for acc in resolved:
+                            if isinstance(acc, dict):
+                                out.append({
+                                    "id": acc.get("id"),
+                                    "name": acc.get("name"),
+                                    "confidence": acc.get("confidence", resolution.get("confidence", 1.0)),
+                                })
+                            else:
+                                out.append({
+                                    "id": getattr(acc, "id", None),
+                                    "name": getattr(acc, "name", None),
+                                    "confidence": getattr(acc, "confidence", resolution.get("confidence", 1.0)),
+                                })
+
+                        return out
             
             # Cache the results
             account_dicts = [acc.__dict__ for acc in mock_accounts]

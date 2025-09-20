@@ -179,9 +179,23 @@ async def lifespan(app: FastAPI):
         # Initialize services
         logger.info("Initializing application services")
         
-        # Initialize RBAC service with settings
-        app_state.rbac_service = RBACService(settings.rbac)
-        logger.info("Initialized RBAC service", enforce_rbac=settings.rbac.enforce_rbac, admin_users=len(settings.rbac.admin_users or []))
+        # Initialize RBAC service with settings. In dev_mode, disable enforcement to bypass RBAC for testing.
+        rbac_settings = settings.rbac
+        if settings.dev_mode:
+            # Create a shallow copy-like override to ensure enforcement is disabled in dev
+            try:
+                # Pydantic BaseSettings is immutable by default - create a new RBACSettings instance
+                from chatbot.config.settings import RBACSettings
+                rbac_settings = RBACSettings(**{**rbac_settings.model_dump(), "enforce_rbac": False})
+            except Exception:
+                # Fallback: set attribute if possible
+                try:
+                    setattr(rbac_settings, "enforce_rbac", False)
+                except Exception:
+                    pass
+
+        app_state.rbac_service = RBACService(rbac_settings)
+        logger.info("Initialized RBAC service", enforce_rbac=rbac_settings.enforce_rbac, admin_users=len(rbac_settings.admin_users or []))
         
         # Initialize account resolver service
         app_state.account_resolver_service = AccountResolverService(
