@@ -1,34 +1,63 @@
 """
-Upload prompts and agent function definitions into Cosmos DB using the app repositories.
-This script reads files from scripts/assets/prompts and scripts/assets/functions and upserts them.
-It deletes existing entries first to ensure a clean state.
+Deterministic uploader for prompts and agent function definitions.
 
-Run: python scripts/upload_artifacts.py
+Loads .env, imports application settings and repository classes, and uploads
+system prompts and function/agent definitions from scripts/assets.
 
-Requirements: runs from repo root and uses the same settings as the app (reads .env)
+Run this after `scripts/set_env.ps1` so .env contains the correct AOAI_* and COSMOS_* values.
+
+Security note: this script does NOT use or recommend account keys. Management/provisioning
+operations (when attempted) are performed via the Azure CLI (AAD) and require an authenticated
+principal with appropriate permissions. If you lack permissions, pre-create the Cosmos resources
+instead of relying on CLI provisioning.
 """
+
 import asyncio
 import json
 import os
 import sys
-from typing import List
+import subprocess
+import shutil
+import time
 
-# ensure we can import the application packages
+# Ensure repo src is on path so we import the app consistently
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'chatbot', 'src'))
 
-from chatbot.config.settings import settings
-from chatbot.clients.cosmos_client import CosmosDBClient
-from chatbot.repositories.prompts_repository import PromptsRepository
-from chatbot.repositories.agent_functions_repository import AgentFunctionsRepository
+# Load .env if present so the uploader uses the same values as the app
+env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+if os.path.exists(env_path):
+    print(f'Loading environment from {env_path}')
+    with open(env_path, 'r', encoding='utf-8') as f:
+        for ln in f:
+            ln = ln.strip()
+            if not ln or ln.startswith('#'):
+                continue
+            if '=' in ln:
+                k, v = ln.split('=', 1)
+                # only set non-empty values to avoid pydantic dotenv parsing issues
+                if v.strip() != '':
+                    os.environ.setdefault(k.strip(), v.strip())
+
+try:
+    from chatbot.config.settings import settings
+    from chatbot.clients.cosmos_client import CosmosDBClient
+    from chatbot.repositories.prompts_repository import PromptsRepository
+    from chatbot.repositories.agent_functions_repository import AgentFunctionsRepository
+except Exception as e:
+    print('\nERROR: failed to import application modules. Make sure you ran scripts/set_env.ps1 and that .env contains the required values (AOAI_*, COSMOS_*, SEARCH_*, etc).')
+    print('Import error:', e)
+    sys.exit(2)
 
 ASSETS_PROMPTS = os.path.join(os.path.dirname(__file__), 'assets', 'prompts')
 ASSETS_FUNCTIONS = os.path.join(os.path.dirname(__file__), 'assets', 'functions')
 ASSETS_FUNCTIONS_TOOLS = os.path.join(ASSETS_FUNCTIONS, 'tools')
 ASSETS_FUNCTIONS_AGENTS = os.path.join(ASSETS_FUNCTIONS, 'agents')
 
-async def upload_prompts(prompts_repo: PromptsRepository):
+async def upload_prompts(prompts_repo):
     print('Uploading prompts...')
-    # Read all .md files
+    if not os.path.isdir(ASSETS_PROMPTS):
+        print('No prompts directory found at', ASSETS_PROMPTS)
+        return
     for fname in os.listdir(ASSETS_PROMPTS):
         if not fname.endswith('.md'):
             continue
@@ -36,19 +65,18 @@ async def upload_prompts(prompts_repo: PromptsRepository):
         agent_name = os.path.splitext(fname)[0]
         with open(path, 'r', encoding='utf-8') as f:
             content = f.read()
-        prompt_id = f"prompt_{agent_name}"
-        # Delete if exists
+        prompt_id = f'prompt_{agent_name}'
         try:
             await prompts_repo.delete_prompt(prompt_id)
         except Exception:
             pass
-        # Save as system prompt default
         await prompts_repo.save_prompt(prompt_id=prompt_id, agent_name=agent_name, prompt_type='system', content=content)
         print('Uploaded', fname)
 
-async def upload_functions(functions_repo: AgentFunctionsRepository):
+async def upload_functions(functions_repo):
     print('Uploading function definitions...')
-    # Upload tool definitions (JSON files containing a 'functions' array)
+    
+    # Upload tools
     if os.path.isdir(ASSETS_FUNCTIONS_TOOLS):
         for fname in os.listdir(ASSETS_FUNCTIONS_TOOLS):
             if not fname.endswith('.json'):
@@ -58,18 +86,25 @@ async def upload_functions(functions_repo: AgentFunctionsRepository):
                 data = json.load(f)
             for func in data.get('functions', []):
                 name = func.get('name')
-                from chatbot.models.result import ToolDefinition
-                td = ToolDefinition(name=name, description=func.get('description',''), parameters=func.get('parameters',{}), metadata=func.get('metadata',{}))
                 try:
-                    await functions_repo.delete_function_definition(name)
-                except Exception:
-                    pass
-                # If metadata contains agents mapping use that, otherwise keep default mapping
-                agents = func.get('agents') or func.get('metadata', {}).get('agents') or ['sql_agent','graph_agent']
-                await functions_repo.save_function_definition(td, agents=agents)
-                print('Uploaded tool function', name, 'agents=', agents)
+                    from chatbot.models.result import ToolDefinition
+                    td = ToolDefinition(
+                        name=name, 
+                        description=func.get('description', ''), 
+                        parameters=func.get('parameters', {}), 
+                        metadata=func.get('metadata', {})
+                    )
+                    try:
+                        await functions_repo.delete_function_definition(name)
+                    except Exception:
+                        pass
+                    agents = func.get('agents') or func.get('metadata', {}).get('agents') or ['sql_agent', 'graph_agent']
+                    await functions_repo.save_function_definition(td, agents=agents)
+                    print('Uploaded tool function', name, 'agents=', agents)
+                except Exception as e:
+                    print('Failed to upload tool function', name, 'error:', e)
 
-    # Upload agent-level registrations (agent JSONs) - convert them into function-like entries so the planner can discover agents
+    # Upload agents
     if os.path.isdir(ASSETS_FUNCTIONS_AGENTS):
         for fname in os.listdir(ASSETS_FUNCTIONS_AGENTS):
             if not fname.endswith('.json'):
@@ -77,33 +112,106 @@ async def upload_functions(functions_repo: AgentFunctionsRepository):
             path = os.path.join(ASSETS_FUNCTIONS_AGENTS, fname)
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            # Agent manifests may contain 'id' and 'agents' array or metadata
             agent_id = data.get('id') or data.get('name')
             agents_list = data.get('agents') or [data.get('name')]
-            # Create a ToolDefinition wrapper so it lands in the same container and can be filtered by agent name
-            from chatbot.models.result import ToolDefinition
-            td = ToolDefinition(name=agent_id, description=data.get('description',''), parameters=data.get('parameters',{}), metadata=data.get('metadata',{}))
             try:
-                await functions_repo.delete_function_definition(agent_id)
-            except Exception:
-                pass
-            await functions_repo.save_function_definition(td, agents=agents_list)
-            print('Uploaded agent registration', agent_id, 'agents=', agents_list)
-
-    # All artifacts should be centralized under scripts/assets/functions
+                from chatbot.models.result import ToolDefinition
+                td = ToolDefinition(
+                    name=agent_id, 
+                    description=data.get('description', ''), 
+                    parameters=data.get('parameters', {}), 
+                    metadata=data.get('metadata', {})
+                )
+                try:
+                    await functions_repo.delete_function_definition(agent_id)
+                except Exception:
+                    pass
+                await functions_repo.save_function_definition(td, agents=agents_list)
+                print('Uploaded agent registration', agent_id, 'agents=', agents_list)
+            except Exception as e:
+                print('Failed to upload agent registration', agent_id, 'error:', e)
 
 async def main():
-    print('Connecting to Cosmos...')
-    # Use CosmosDBClient wrapper to create an async CosmosClient
-    cosmos_client = CosmosDBClient(endpoint=settings.cosmos_db.endpoint)
-    await cosmos_client.initialize()
-    # Instantiate repositories
-    prompts_repo = PromptsRepository(cosmos_client.client, settings.cosmos_db.database_name, settings.cosmos_db.prompts_container)
-    functions_repo = AgentFunctionsRepository(cosmos_client.client, settings.cosmos_db.database_name, settings.cosmos_db.agent_functions_container)
+    print('Connecting to Cosmos using application settings...')
+    cosmos_conf = settings.cosmos_db
+    # Provision Cosmos resources via Azure CLI using AAD (no account keys are used)
+    def provision_cosmos_via_az(endpoint: str, database: str, containers: list):
+        """Best-effort: use Azure CLI to create database and containers using AAD credentials.
 
-    # Run upload
+        This function performs management operations through the Azure CLI and requires the
+        signed-in principal to have sufficient privileges. If the CLI or permissions are not
+        available, the function will skip provisioning and the uploader will fail with an
+        actionable error explaining the required pre-steps.
+        """
+        # endpoint looks like https://<account>.documents.azure.com:443/
+        try:
+            parsed = endpoint.replace('https://', '').split('.')[0]
+            account = parsed
+        except Exception:
+            print('Could not parse Cosmos account name from endpoint', endpoint)
+            return
+
+        # Try to discover resource group via az resource show
+        try:
+            rg_lookup = subprocess.run([
+                'az','resource','list','--resource-type','Microsoft.DocumentDB/databaseAccounts','--query','[?contains(name, `'+account+'`)]','-o','json'
+            ], capture_output=True, text=True, check=False)
+            if rg_lookup.returncode == 0 and rg_lookup.stdout:
+                data = json.loads(rg_lookup.stdout)
+                if isinstance(data, list) and len(data) > 0:
+                    rg = data[0].get('resourceGroup')
+                else:
+                    rg = None
+            else:
+                rg = None
+        except Exception:
+            rg = None
+
+        if not rg:
+            print('Could not detect resource group for Cosmos account', account, '— skipping az provisioning. Please create resources manually.')
+            return
+
+        print(f'Provisioning Cosmos DB {database} and containers in account {account} (resource group {rg}) using Azure CLI...')
+
+        # Create database
+        subprocess.run(['az','cosmosdb','sql','database','create','--account-name',account,'-g',rg,'--name',database], check=False)
+
+        # Create containers
+        for c in containers:
+            print('Ensuring container', c)
+            subprocess.run([
+                'az','cosmosdb','sql','container','create','--account-name',account,'-g',rg,'--database-name',database,'--name',c,'--partition-key-path','/id','--throughput','400'
+            ], check=False)
+
+    # Gather list of containers we will need
+    containers_to_ensure = [
+        cosmos_conf.chat_container,
+        cosmos_conf.cache_container,
+        cosmos_conf.prompts_container,
+        cosmos_conf.agent_functions_container,
+        cosmos_conf.sql_schema_container,
+        cosmos_conf.contracts_text_container,
+        cosmos_conf.processed_files_container,
+        cosmos_conf.account_resolver_container,
+        cosmos_conf.feedback_container,
+    ]
+    provision_cosmos_via_az(cosmos_conf.endpoint, cosmos_conf.database_name, containers_to_ensure)
+
+    client = CosmosDBClient(cosmos_conf)
+    try:
+        await client._get_client()
+    except Exception as e:
+        print('\nERROR: failed to initialize Cosmos client. This is likely an authentication/permission error or network issue.')
+        print('Exception:', e)
+        print('\nIf you are using AAD tokens, ensure the signed-in principal has data-plane RBAC (Cosmos DB Built-in Data Contributor) or pre-create the database/containers before running this script.')
+        sys.exit(3)
+
+    prompts_repo = PromptsRepository(client, cosmos_conf.database_name, cosmos_conf.prompts_container)
+    functions_repo = AgentFunctionsRepository(client, cosmos_conf.database_name, cosmos_conf.agent_functions_container)
+
     await upload_prompts(prompts_repo)
     await upload_functions(functions_repo)
+
     print('Upload complete.')
 
 if __name__ == '__main__':

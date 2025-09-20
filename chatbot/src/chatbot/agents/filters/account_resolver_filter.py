@@ -117,23 +117,37 @@ class AccountResolverFilter:
             self.account_corpus = []
             for account in accounts:
                 # Combine account name with other searchable fields
-                text_parts = [account.get('name', '')]
+                text_parts = []
                 
-                # Add other relevant fields if available
-                if 'description' in account:
-                    text_parts.append(account['description'])
-                if 'industry' in account:
-                    text_parts.append(account['industry'])
-                if 'type' in account:
-                    text_parts.append(account['type'])
-                if 'aliases' in account:
-                    if isinstance(account['aliases'], list):
-                        text_parts.extend(account['aliases'])
+                # Add account name (required)
+                name = account.get('name', '')
+                if name:
+                    text_parts.append(str(name))
+                
+                # Add other relevant fields if available and not None
+                description = account.get('description')
+                if description and description is not None:
+                    text_parts.append(str(description))
+                    
+                industry = account.get('industry')
+                if industry and industry is not None:
+                    text_parts.append(str(industry))
+                    
+                acct_type = account.get('type')
+                if acct_type and acct_type is not None:
+                    text_parts.append(str(acct_type))
+                    
+                aliases = account.get('aliases')
+                if aliases and aliases is not None:
+                    if isinstance(aliases, list):
+                        # Filter out None values from aliases list
+                        valid_aliases = [str(alias) for alias in aliases if alias is not None]
+                        text_parts.extend(valid_aliases)
                     else:
-                        text_parts.append(str(account['aliases']))
+                        text_parts.append(str(aliases))
                 
-                # Combine and preprocess
-                combined_text = ' '.join(text_parts)
+                # Combine and preprocess (ensure we have at least the name)
+                combined_text = ' '.join(text_parts) if text_parts else account.get('name', 'unnamed_account')
                 preprocessed_text = self._preprocess_text(combined_text)
                 self.account_corpus.append(preprocessed_text)
             

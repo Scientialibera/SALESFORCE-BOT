@@ -78,9 +78,18 @@ class CosmosDBClient:
                 logger.debug("Connected to existing database", database=self.settings.database_name)
 
             except exceptions.CosmosResourceNotFoundError:
-                logger.info("Database not found, creating new database", database=self.settings.database_name)
-                self._database = await client.create_database(self.settings.database_name)
-                logger.info("Created new database", database=self.settings.database_name)
+                # Database does not exist. The application previously attempted to create
+                # databases/containers automatically. That operation requires key-based
+                # authorization for Cosmos DB management operations in many setups.
+                # Do NOT attempt to auto-provision here; surface a clear error so the
+                # operator can pre-create the database (recommended) or provide keys.
+                msg = (
+                    f"Database '{self.settings.database_name}' not found. "
+                    "Auto-provisioning is disabled. Please create the database and required containers "
+                    "manually, or run the app with explicit provisioning enabled. See https://aka.ms/cosmos-native-rbac"
+                )
+                logger.error(msg)
+                raise RuntimeError(msg)
             except Exception as e:
                 logger.error("Failed to get or create database", database=self.settings.database_name, error=str(e))
                 raise
@@ -109,31 +118,161 @@ class CosmosDBClient:
             except exceptions.CosmosResourceNotFoundError:
                 # Create container if it doesn't exist
                 try:
-                    container = await database.create_container(
-                        id=container_name,
-                        partition_key=PartitionKey(path=partition_key),
-                        offer_throughput=400,  # Minimum RU/s
+                    # If running in dev mode, avoid management operations that require AAD data-plane permissions.
+                    # Container missing. Creating containers requires management permissions
+                    # which are often blocked when using AAD tokens for the data plane.
+                    # We will NOT auto-create containers here to avoid unexpected management calls.
+                    msg = (
+                        f"Container '{container_name}' not found in database '{self.settings.database_name}'. "
+                        "Auto-creation of containers is disabled. Pre-create the container or enable provisioning explicitly. "
+                        "See https://aka.ms/cosmos-native-rbac for details."
                     )
-                    self._containers[container_name] = container
-                    logger.info("Created new container", container=container_name)
+                    logger.error(msg)
+                    raise RuntimeError(msg)
                 except Exception as e:
                     # Common cause: AAD token cannot perform data-plane management operations.
-                    if "cannot be authorized by AAD token" in str(e) or "Request blocked by Auth" in str(e):
+                    msg = str(e)
+                    if "cannot be authorized by AAD token" in msg or "Request blocked by Auth" in msg or (hasattr(e, 'status_code') and getattr(e, 'status_code') == 403):
                         logger.error(
                             "Failed to create container due to AAD data-plane authorization. "
                             "Cosmos may require key auth for management operations or pre-created containers. "
                             "See https://aka.ms/cosmos-native-rbac for details.",
                             container=container_name,
-                            error=str(e)
+                            error=msg
                         )
+                        # If running in dev mode, fall back to an in-memory container instead of failing hard.
+                        if getattr(self.settings, 'dev_mode', False):
+                            logger.info("Dev mode and AAD forbidden: using in-memory fallback for container", container=container_name)
+                            class InMemoryContainer:
+                                def __init__(self):
+                                    self._items = {}
+
+                                async def create_item(self, body):
+                                    _id = body.get('id') or str(len(self._items) + 1)
+                                    body['id'] = _id
+                                    self._items[_id] = body
+                                    return body
+
+                                async def read_item(self, item, partition_key=None):
+                                    return self._items.get(item)
+
+                                async def upsert_item(self, body):
+                                    _id = body.get('id') or str(len(self._items) + 1)
+                                    body['id'] = _id
+                                    self._items[_id] = body
+                                    return body
+
+                            container = InMemoryContainer()
+                            self._containers[container_name] = container
+                            logger.info("Created in-memory fallback container for dev after AAD forbidden", container=container_name)
+                        else:
+                            raise
                     else:
-                        logger.error("Failed to create container", container=container_name, error=str(e))
-                    raise
+                        logger.error("Failed to create container", container=container_name, error=msg)
+                        raise
             except Exception as e:
                 logger.error("Failed to get container", container=container_name, error=str(e))
                 raise
         
         return self._containers[container_name]
+
+    async def _get_container_for_db(self, database_name: str, container_name: str, partition_key: str = "/id"):
+        """Get or create a container on a specific database name.
+
+        This mirrors _get_container but allows specifying a different database than
+        the one configured in settings. It returns the underlying container
+        object (SDK client or in-memory fallback) so callers can call async
+        methods like create_item / query_items on it.
+        """
+        # If requesting the configured database, reuse existing path
+        if database_name == self.settings.database_name:
+            return await self._get_container(container_name, partition_key)
+
+        # Use or create a per-database container cache key
+        key = f"{database_name}.{container_name}"
+        if key in self._containers:
+            return self._containers[key]
+
+        client = await self._get_client()
+        # Try to get a database client for the requested database
+        try:
+            database = client.get_database_client(database_name)
+            # Touch/read to verify existence
+            try:
+                await database.read()
+            except exceptions.CosmosResourceNotFoundError:
+                logger.info("Database not found, creating new database", database=database_name)
+                database = await client.create_database(database_name)
+                logger.info("Created new database", database=database_name)
+
+                try:
+                    container = database.get_container_client(container_name)
+                    await container.read()
+                    self._containers[key] = container
+                    logger.debug("Connected to existing container", database=database_name, container=container_name)
+                except exceptions.CosmosResourceNotFoundError:
+                    # Create container if missing (respect dev_mode)
+                        # Container missing. Creating containers requires management permissions
+                        # which are often blocked when using AAD tokens for the data plane.
+                        msg = (
+                            f"Container '{container_name}' not found in database '{database_name}'. "
+                            "Auto-creation of containers is disabled. Pre-create the container or enable provisioning explicitly. "
+                            "See https://aka.ms/cosmos-native-rbac for details."
+                        )
+                        logger.error(msg)
+                        raise RuntimeError(msg)
+
+        except Exception as e:
+            logger.error("Failed to get or create container for database",
+                         database=database_name, container=container_name, error=str(e))
+            raise
+
+        return self._containers[key]
+
+    def get_container(self, database_name: str, container_name: str, partition_key: str = "/id"):
+        """Public synchronous accessor that returns a proxy container object.
+
+        Many services call get_container(...) synchronously and then await
+        methods on the returned object (for example: await container.create_item(...)).
+        To preserve that usage pattern we return a ContainerProxy which exposes
+        async methods and internally resolves the real container when first used.
+        """
+        class ContainerProxy:
+            def __init__(self, client: "CosmosDBClient", db: str, col: str, pk: str):
+                self._client = client
+                self._db = db
+                self._col = col
+                self._pk = pk
+                self._resolved = None
+
+            async def _resolve(self):
+                if self._resolved is None:
+                    self._resolved = await self._client._get_container_for_db(self._db, self._col, self._pk)
+                return self._resolved
+
+            async def create_item(self, body):
+                container = await self._resolve()
+                return await container.create_item(body)
+
+            async def upsert_item(self, body):
+                container = await self._resolve()
+                return await container.upsert_item(body)
+
+            async def read_item(self, item, partition_key=None):
+                container = await self._resolve()
+                return await container.read_item(item, partition_key=partition_key)
+
+            async def delete_item(self, item, partition_key=None):
+                container = await self._resolve()
+                return await container.delete_item(item, partition_key=partition_key)
+
+            async def query_items(self, query, parameters=None, **kwargs):
+                container = await self._resolve()
+                # Delegate as an async generator
+                async for it in container.query_items(query=query, parameters=parameters or [], **kwargs):
+                    yield it
+
+        return ContainerProxy(self, database_name, container_name, partition_key)
     
     @retry(
         stop=stop_after_attempt(3),

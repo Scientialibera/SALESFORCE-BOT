@@ -1,17 +1,14 @@
 {"origins": ["*"], "event": "Configured CORS middleware"}
 {"api_prefix": "/api/v1", "event": "Configured application routes"}
-{"app_name": "Account Q&A Bot", "version": "1.0.0", "debug": false, "event": "Created FastAPI application"}
-INFO:     Started server process [12688]
-INFO:     Waiting for application startup.
+{"app_name": "salesforce-chatbot", "version": "1.0.0", "debug": false, "event": "Created FastAPI application"}
 {"version": "1.0.0", "event": "Starting Account Q&A Bot application"}
 {"event": "Initializing Azure service clients"}
-{"endpoint": "https://salesforcebot-aoai.cognitiveservices.azure.com", "chat_deployment": "chat-deployment", "embedding_deployment": "embedding-deployment", "event": "Initializing Azure OpenAI client"}
+{"endpoint": "https://salesforcebot-aoai.cognitiveservices.azure.com", "chat_deployment": "gpt-4o", "embedding_deployment": "text-embedding-3-small", "event": "Initializing Azure OpenAI client"}
 {"event": "Azure OpenAI client initialized successfully"}
 {"endpoint": "https://salesforcebot-cosmos-sql.documents.azure.com:443/", "database": "appdb", "event": "Initializing Cosmos DB client"}
 {"event": "Cosmos DB client initialized successfully"}
 {"endpoint": "https://salesforcebot-cosmos-graph.gremlin.cosmos.azure.com:443/", "database": "graphdb", "graph": "account_graph", "event": "Initializing Gremlin client"}
 {"event": "Gremlin client initialized successfully"}
-{"event": "Fabric client running in dev mode - using dummy data"}
 {"event": "Fabric client initialized successfully"}
 {"event": "Initializing data repositories"}
 {"container": "chat_history", "event": "Initialized chat history repository"}
@@ -20,8 +17,8 @@ INFO:     Waiting for application startup.
 {"enforce_rbac": false, "admin_users": 0, "event": "Initialized RBAC service"}
 {"enforce_rbac": false, "admin_users": 0, "event": "Initialized RBAC service"}
 {"min_similarity": 0.3, "max_candidates": 20, "event": "Account resolver filter initialized"}
-{"use_tfidf": true, "confidence_threshold": 0.7, "tfidf_threshold": 0.3, "event": "Account resolver service initialized"}
-{"confidence_threshold": 0.7, "event": "Account resolver service initialized"}
+{"use_tfidf": true, "confidence_threshold": 0.8, "tfidf_threshold": 0.3, "event": "Account resolver service initialized"}
+{"confidence_threshold": 0.8, "event": "Account resolver service initialized"}
 {"event": "Initializing Semantic Kernel agents"}
 {"event": "Planner configuration skipped - using basic kernel functionality"}
 {"event": "Planner service initialized"}
@@ -31,417 +28,273 @@ INFO:     Waiting for application startup.
 {"event": "Graph agent plugin registered with kernel"}
 {"event": "Agents will load functions dynamically from database"}
 {"event": "Application startup completed successfully"}
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-{"request_id": "f21c4817", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-CA) WindowsPowerShell/5.1.26100.3624", "event": "HTTP request started"}
-DEBUG: [f21c4817] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [f21c4817] Headers: {'user-agent': 'Mozilla/5.0 (Windows NT; Windows NT 10.0; en-CA) WindowsPowerShell/5.1.26100.3624', 'content-type': 'application/json', 'host': '127.0.0.1:8000', 'content-length': '0', 'connection': 'Keep-Alive'}
-DEBUG: [f21c4817] Tasks before request: 4
-DEBUG: [f21c4817] Event loop running: True, closed: False
-DEBUG: [f21c4817] About to call next middleware/handler
-DEBUG: [f21c4817] Handler completed successfully
-DEBUG: [f21c4817] Response status: 422
-DEBUG: [f21c4817] Tasks after request: 5
-DEBUG: [f21c4817] Event loop running: True, closed: False
-{"request_id": "f21c4817", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 422, "duration_ms": 3, "event": "HTTP request completed"}
-DEBUG: [f21c4817] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:59431 - "POST /api/v1/chat HTTP/1.1" 422 Unprocessable Content
-{"request_id": "5b2356eb", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
-DEBUG: [5b2356eb] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [5b2356eb] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-length': '169', 'content-type': 'application/json'}
-DEBUG: [5b2356eb] Tasks before request: 4
-DEBUG: [5b2356eb] Event loop running: True, closed: False
-DEBUG: [5b2356eb] About to call next middleware/handler
-{"session_id": "s_no_tool", "turn_id": "20548d5c-3978-43d8-a2c8-8b1581b3802a", "user_id": "tester_no_tool", "message_length": 50, "event": "Processing chat message"}
+{"request_id": "aa276cf6", "method": "GET", "url": "http://127.0.0.1:8000/health", "user_agent": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-CA) WindowsPowerShell/5.1.26100.3624", "event": "HTTP request started"}
+DEBUG: [aa276cf6] REQUEST START: GET http://127.0.0.1:8000/health
+DEBUG: [aa276cf6] Headers: {'user-agent': 'Mozilla/5.0 (Windows NT; Windows NT 10.0; en-CA) WindowsPowerShell/5.1.26100.3624', 'host': '127.0.0.1:8000', 'connection': 'Keep-Alive'}
+DEBUG: [aa276cf6] Tasks before request: 4
+DEBUG: [aa276cf6] Event loop running: True, closed: False
+DEBUG: [aa276cf6] About to call next middleware/handler
+DEBUG: [aa276cf6] Handler completed successfully
+DEBUG: [aa276cf6] Response status: 307
+DEBUG: [aa276cf6] Tasks after request: 5
+DEBUG: [aa276cf6] Event loop running: True, closed: False
+{"request_id": "aa276cf6", "method": "GET", "url": "http://127.0.0.1:8000/health", "status_code": 307, "duration_ms": 1, "event": "HTTP request completed"}
+DEBUG: [aa276cf6] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:61277 - "GET /health HTTP/1.1" 307 Temporary Redirect
+{"request_id": "15326ea2", "method": "GET", "url": "http://127.0.0.1:8000/health/", "user_agent": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-CA) WindowsPowerShell/5.1.26100.3624", "event": "HTTP request started"}
+DEBUG: [15326ea2] REQUEST START: GET http://127.0.0.1:8000/health/
+DEBUG: [15326ea2] Headers: {'user-agent': 'Mozilla/5.0 (Windows NT; Windows NT 10.0; en-CA) WindowsPowerShell/5.1.26100.3624', 'host': '127.0.0.1:8000'}
+DEBUG: [15326ea2] Tasks before request: 4
+DEBUG: [15326ea2] Event loop running: True, closed: False
+DEBUG: [15326ea2] About to call next middleware/handler
+DEBUG: [15326ea2] Handler completed successfully
+DEBUG: [15326ea2] Response status: 200
+DEBUG: [15326ea2] Tasks after request: 5
+DEBUG: [15326ea2] Event loop running: True, closed: False
+{"request_id": "15326ea2", "method": "GET", "url": "http://127.0.0.1:8000/health/", "status_code": 200, "duration_ms": 1, "event": "HTTP request completed"}
+DEBUG: [15326ea2] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:61277 - "GET /health/ HTTP/1.1" 200 OK
+{"request_id": "e22d56e9", "method": "GET", "url": "http://127.0.0.1:8000/health", "user_agent": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-CA) WindowsPowerShell/5.1.26100.3624", "event": "HTTP request started"}
+DEBUG: [e22d56e9] REQUEST START: GET http://127.0.0.1:8000/health
+DEBUG: [e22d56e9] Headers: {'user-agent': 'Mozilla/5.0 (Windows NT; Windows NT 10.0; en-CA) WindowsPowerShell/5.1.26100.3624', 'host': '127.0.0.1:8000', 'connection': 'Keep-Alive'}
+DEBUG: [e22d56e9] Tasks before request: 4
+DEBUG: [e22d56e9] Event loop running: True, closed: False
+DEBUG: [e22d56e9] About to call next middleware/handler
+DEBUG: [e22d56e9] Handler completed successfully
+DEBUG: [e22d56e9] Response status: 307
+DEBUG: [e22d56e9] Tasks after request: 5
+DEBUG: [e22d56e9] Event loop running: True, closed: False
+{"request_id": "e22d56e9", "method": "GET", "url": "http://127.0.0.1:8000/health", "status_code": 307, "duration_ms": 10, "event": "HTTP request completed"}
+DEBUG: [e22d56e9] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:61279 - "GET /health HTTP/1.1" 307 Temporary Redirect
+{"request_id": "55aca5bf", "method": "GET", "url": "http://127.0.0.1:8000/health/", "user_agent": "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-CA) WindowsPowerShell/5.1.26100.3624", "event": "HTTP request started"}
+DEBUG: [55aca5bf] REQUEST START: GET http://127.0.0.1:8000/health/
+DEBUG: [55aca5bf] Headers: {'user-agent': 'Mozilla/5.0 (Windows NT; Windows NT 10.0; en-CA) WindowsPowerShell/5.1.26100.3624', 'host': '127.0.0.1:8000'}
+DEBUG: [55aca5bf] Tasks before request: 4
+DEBUG: [55aca5bf] Event loop running: True, closed: False
+DEBUG: [55aca5bf] About to call next middleware/handler
+DEBUG: [55aca5bf] Handler completed successfully
+DEBUG: [55aca5bf] Response status: 200
+DEBUG: [55aca5bf] Tasks after request: 5
+DEBUG: [55aca5bf] Event loop running: True, closed: False
+{"request_id": "55aca5bf", "method": "GET", "url": "http://127.0.0.1:8000/health/", "status_code": 200, "duration_ms": 0, "event": "HTTP request completed"}
+DEBUG: [55aca5bf] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:61279 - "GET /health/ HTTP/1.1" 200 OK
+{"request_id": "04c99b61", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
+DEBUG: [04c99b61] REQUEST START: POST http://localhost:8000/api/v1/chat
+DEBUG: [04c99b61] Headers: {'host': 'localhost:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-length': '175', 'content-type': 'application/json'}
+DEBUG: [04c99b61] Tasks before request: 4
+DEBUG: [04c99b61] Event loop running: True, closed: False
+DEBUG: [04c99b61] About to call next middleware/handler
+{"url": "http://localhost:8000/api/v1/chat", "event": "Authenticating user request"}
+{"event": "Using fallback RBAC context"}
+{"event": "Fallback RBAC context created successfully"}
+{"session_id": "s_no_tool", "turn_id": "b2e26565-4fde-4032-8b49-96dca0e4f3d6", "user_id": "tester_no_tool", "message_length": 45, "event": "Processing chat message"}
 {"event": "Created Cosmos DB client with managed identity"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: af1b4627-0ec2-42dd-9670-3fb9a0b3e55c, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: af1b4627-0ec2-42dd-9670-3fb9a0b3e55c, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 20fc81f0-70d1-45ff-ac6e-4e530b57b07a, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 20fc81f0-70d1-45ff-ac6e-4e530b57b07a, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: af527488-e7b7-4942-b9fc-30fab141a601, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: af527488-e7b7-4942-b9fc-30fab141a601, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_no_tool", "user_id": "tester_no_tool", "error": "RetryError[<Future at 0x22f9cea4910 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_no_tool", "user_id": "tester_no_tool", "event": "Chat history not found"}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: a34ca067-8432-4ce4-897a-0e0680f4337d, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: a34ca067-8432-4ce4-897a-0e0680f4337d, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 82464029-357b-4790-a2f1-5181c68af40d, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 82464029-357b-4790-a2f1-5181c68af40d, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 5cb04d1b-7156-403c-9150-38a2d45d476f, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 5cb04d1b-7156-403c-9150-38a2d45d476f, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"chat_id": "s_no_tool", "user_id": "user@example.com", "error": "RetryError[<Future at 0x22263e6f9d0 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
+{"chat_id": "s_no_tool", "user_id": "user@example.com", "event": "Chat history not found"}
 {"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_no_tool", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "1d5bedc4-a80f-4074-bd4e-d4eb92abcd3d", "plan_type": "graph_only", "agent_type": "graph_agent", "user_id": "tester_no_tool", "event": "Basic plan created"}
-{"plan_id": "1d5bedc4-a80f-4074-bd4e-d4eb92abcd3d", "user_id": "tester_no_tool", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "1d5bedc4-a80f-4074-bd4e-d4eb92abcd3d", "execution_id": "96fbd184-5bdf-41f9-bed7-4b25f993be6e", "user_id": "tester_no_tool", "event": "Starting plan execution"}
-{"step_id": "e092dcec-9116-42c9-abd5-e105d0d8d531", "tool_name": "graph_agent", "user_id": "tester_no_tool", "event": "Executing plan step"}
-{"user_query": "Who is the current President of the United States?", "relationship_types": "", "max_depth": "2", "user_id": "tester_no_tool", "event": "Finding account relationships from query"}
-{"event_id": "70e9820c-3cca-42f6-9c64-150486680384", "event_type": "performance_metric", "severity": "info", "user_id": "tester_no_tool", "session_id": null, "event": "Telemetry event tracked"}
-{"user_query": "Who is the current President of the United States?", "error": "'AccountResolverService' object has no attribute 'resolve_entities'", "event": "Failed to find account relationships"}
-{"step_id": "e092dcec-9116-42c9-abd5-e105d0d8d531", "event": "Step executed successfully"}
-{"plan_id": "1d5bedc4-a80f-4074-bd4e-d4eb92abcd3d", "execution_id": "96fbd184-5bdf-41f9-bed7-4b25f993be6e", "status": "completed", "duration_seconds": 0.002586, "event": "Plan execution completed"}
-{"session_id": "s_no_tool", "turn_id": "20548d5c-3978-43d8-a2c8-8b1581b3802a", "user_message": "Who is the current President of the United States?", "assistant_response": "{\"success\": false, \"error\": \"'AccountResolverService' object has no attribute 'resolve_entities'\", \"...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_no_tool", "turn_id": "20548d5c-3978-43d8-a2c8-8b1581b3802a", "response_length": 166, "sources_count": 0, "event": "Chat message processed successfully"}
-{"error": "'CosmosDBClient' object has no attribute 'get_container'", "event": "Failed to store telemetry event"}
-DEBUG: [5b2356eb] Handler completed successfully
-DEBUG: [5b2356eb] Response status: 200
-DEBUG: [5b2356eb] Tasks after request: 5
-DEBUG: [5b2356eb] Event loop running: True, closed: False
-{"request_id": "5b2356eb", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 13899, "event": "HTTP request completed"}
-DEBUG: [5b2356eb] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:59440 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "9af2c458", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Python-urllib/3.13", "event": "HTTP request started"}
-DEBUG: [9af2c458] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [9af2c458] Headers: {'accept-encoding': 'identity', 'content-length': '121', 'host': '127.0.0.1:8000', 'user-agent': 'Python-urllib/3.13', 'content-type': 'application/json', 'connection': 'close'}
-DEBUG: [9af2c458] Tasks before request: 4
-DEBUG: [9af2c458] Event loop running: True, closed: False
-DEBUG: [9af2c458] About to call next middleware/handler
-{"session_id": "s_no_tool", "turn_id": "cb008035-e2c5-4b13-8b51-51929edf9c8f", "user_id": "tester_no_tool", "message_length": 18, "event": "Processing chat message"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 7e2ba71e-c102-4c26-97cf-8749500a78b7, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 7e2ba71e-c102-4c26-97cf-8749500a78b7, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 45de801d-6374-472c-92bf-46fe3ee7fe8d, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 45de801d-6374-472c-92bf-46fe3ee7fe8d, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 47684d5b-a47d-4a4a-a4e6-48b4e023ac4f, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 47684d5b-a47d-4a4a-a4e6-48b4e023ac4f, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_no_tool", "user_id": "tester_no_tool", "error": "RetryError[<Future at 0x22f9e6a4290 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_no_tool", "user_id": "tester_no_tool", "event": "Chat history not found"}
+{"user_id": "user@example.com", "error": "'name'", "event": "Failed to get filtered functions"}
+{"agent_name": "planner_system", "tenant_id": "tenant123", "scenario": "general", "prompt_id": "prompt_planner_system", "event": "Retrieved system prompt"}
+{"plan_id": "13adebb3-b968-4f8f-a784-87c5fe1e797a", "plan_type": "no_tool", "agent_type": "direct_response", "user_id": "user@example.com", "event": "Basic plan created"}
+{"plan_id": "13adebb3-b968-4f8f-a784-87c5fe1e797a", "user_id": "user@example.com", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
+{"plan_id": "13adebb3-b968-4f8f-a784-87c5fe1e797a", "execution_id": "74504c94-427d-420e-9fce-f37dcaaeb330", "user_id": "user@example.com", "event": "Starting plan execution"}
+{"step_id": "7eaea05b-f56e-49de-a569-bcd50f3376b1", "tool_name": "direct_response", "user_id": "user@example.com", "event": "Executing plan step"}
+{"step_id": "7eaea05b-f56e-49de-a569-bcd50f3376b1", "event": "Direct response step executed successfully"}
+{"plan_id": "13adebb3-b968-4f8f-a784-87c5fe1e797a", "execution_id": "74504c94-427d-420e-9fce-f37dcaaeb330", "status": "completed", "duration_seconds": 0.001089, "event": "Plan execution completed"}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 12a45390-6f98-4d5d-a50e-258232d232e4, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 12a45390-6f98-4d5d-a50e-258232d232e4, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 33a51ee7-e505-43f7-af5a-f68fc6eb8b7d, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 33a51ee7-e505-43f7-af5a-f68fc6eb8b7d, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 9614ca92-c321-4b83-ba7a-7c163ee7c887, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 9614ca92-c321-4b83-ba7a-7c163ee7c887, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"chat_id": "s_no_tool", "user_id": "user@example.com", "error": "RetryError[<Future at 0x22263e4f9b0 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
+{"chat_id": "s_no_tool", "event": "Chat history not found for turn addition"}
+{"chat_id": "s_no_tool", "user_id": "user@example.com", "error": "Failed to save conversation turn to repository", "event": "Failed to add conversation turn"}
+{"event": "Failed to save conversation turn: Failed to save conversation turn to repository"}
+{"session_id": "s_no_tool", "turn_id": "b2e26565-4fde-4032-8b49-96dca0e4f3d6", "response_length": 340, "sources_count": 0, "event": "Chat message processed successfully"}
+DEBUG: [04c99b61] Handler completed successfully
+DEBUG: [04c99b61] Response status: 200
+DEBUG: [04c99b61] Tasks after request: 5
+DEBUG: [04c99b61] Event loop running: True, closed: False
+{"request_id": "04c99b61", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "status_code": 200, "duration_ms": 21555, "event": "HTTP request completed"}
+DEBUG: [04c99b61] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:61283 - "POST /api/v1/chat HTTP/1.1" 200 OK
+{"request_id": "794bbb6a", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
+DEBUG: [794bbb6a] REQUEST START: POST http://localhost:8000/api/v1/chat
+DEBUG: [794bbb6a] Headers: {'host': 'localhost:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-length': '165', 'content-type': 'application/json'}
+DEBUG: [794bbb6a] Tasks before request: 4
+DEBUG: [794bbb6a] Event loop running: True, closed: False
+DEBUG: [794bbb6a] About to call next middleware/handler
+{"url": "http://localhost:8000/api/v1/chat", "event": "Authenticating user request"}
+{"event": "Using fallback RBAC context"}
+{"event": "Fallback RBAC context created successfully"}
+{"session_id": "s_sql", "turn_id": "f280e860-9351-49ea-a4df-ee793b8f55a5", "user_id": "tester_sql", "message_length": 42, "event": "Processing chat message"}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 734fe648-306c-4a28-9cab-5bcb674f820b, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 734fe648-306c-4a28-9cab-5bcb674f820b, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 0950d424-4bd4-4e1a-a0b5-e5679ab220ce, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 0950d424-4bd4-4e1a-a0b5-e5679ab220ce, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: b60f8435-f620-46f4-9aa5-400219144524, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: b60f8435-f620-46f4-9aa5-400219144524, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"chat_id": "s_sql", "user_id": "user@example.com", "error": "RetryError[<Future at 0x22262648a50 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
+{"chat_id": "s_sql", "user_id": "user@example.com", "event": "Chat history not found"}
 {"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_no_tool", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "5427031f-0b06-4ae8-8af3-aaba5dd5891b", "plan_type": "no_tool", "agent_type": "direct_response", "user_id": "tester_no_tool", "event": "Basic plan created"}
-{"plan_id": "5427031f-0b06-4ae8-8af3-aaba5dd5891b", "user_id": "tester_no_tool", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "5427031f-0b06-4ae8-8af3-aaba5dd5891b", "execution_id": "501185ab-6691-452d-96fa-1607c707ff8d", "user_id": "tester_no_tool", "event": "Starting plan execution"}
-{"step_id": "8641b5f0-8dad-4e26-aff6-84d2e32c16b7", "tool_name": "direct_response", "user_id": "tester_no_tool", "event": "Executing plan step"}
-{"step_id": "8641b5f0-8dad-4e26-aff6-84d2e32c16b7", "event": "Direct response step executed successfully"}
-{"plan_id": "5427031f-0b06-4ae8-8af3-aaba5dd5891b", "execution_id": "501185ab-6691-452d-96fa-1607c707ff8d", "status": "completed", "duration_seconds": 0.000254, "event": "Plan execution completed"}
-{"session_id": "s_no_tool", "turn_id": "cb008035-e2c5-4b13-8b51-51929edf9c8f", "user_message": "How are you doing?", "assistant_response": "I'm a specialized Salesforce Q&A assistant focused on helping with business data, accounts, opportun...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_no_tool", "turn_id": "cb008035-e2c5-4b13-8b51-51929edf9c8f", "response_length": 313, "sources_count": 0, "event": "Chat message processed successfully"}
-DEBUG: [9af2c458] Handler completed successfully
-DEBUG: [9af2c458] Response status: 200
-DEBUG: [9af2c458] Tasks after request: 5
-DEBUG: [9af2c458] Event loop running: True, closed: False
-{"request_id": "9af2c458", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 11790, "event": "HTTP request completed"}
-DEBUG: [9af2c458] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:59470 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "51b55f7b", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Python-urllib/3.13", "event": "HTTP request started"}
-DEBUG: [51b55f7b] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [51b55f7b] Headers: {'accept-encoding': 'identity', 'content-length': '166', 'host': '127.0.0.1:8000', 'user-agent': 'Python-urllib/3.13', 'content-type': 'application/json', 'connection': 'close'}
-DEBUG: [51b55f7b] Tasks before request: 4
-DEBUG: [51b55f7b] Event loop running: True, closed: False
-DEBUG: [51b55f7b] About to call next middleware/handler
-{"session_id": "s_no-tool", "turn_id": "404fc1e6-b641-4483-92f5-fa63786ec3e1", "user_id": "tester_auto", "message_length": 50, "event": "Processing chat message"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 90d52731-62ad-4b94-904b-d583624e7310, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 90d52731-62ad-4b94-904b-d583624e7310, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 816ee7d9-68d0-47e4-82a4-80c86e3759dd, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 816ee7d9-68d0-47e4-82a4-80c86e3759dd, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 28132ef9-bb96-460e-bf61-6fed70624d8d, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 28132ef9-bb96-460e-bf61-6fed70624d8d, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_no-tool", "user_id": "tester_auto", "error": "RetryError[<Future at 0x22f9cd49d50 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_no-tool", "user_id": "tester_auto", "event": "Chat history not found"}
+{"user_id": "user@example.com", "error": "'name'", "event": "Failed to get filtered functions"}
+{"agent_name": "planner_system", "tenant_id": "tenant123", "scenario": "general", "prompt_id": "prompt_planner_system", "event": "Retrieved system prompt"}
+{"plan_id": "45769fe9-99ad-4da4-b07b-dc72d36901a5", "plan_type": "sql_only", "agent_type": "sql_agent", "user_id": "user@example.com", "event": "Basic plan created"}
+{"plan_id": "45769fe9-99ad-4da4-b07b-dc72d36901a5", "user_id": "user@example.com", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
+{"plan_id": "45769fe9-99ad-4da4-b07b-dc72d36901a5", "execution_id": "3d0b983a-e584-405b-bf89-644c461674d1", "user_id": "user@example.com", "event": "Starting plan execution"}
+{"step_id": "eb028f60-fc7f-4b8e-8fd8-956bc95c02b3", "tool_name": "sql_agent", "user_id": "user@example.com", "event": "Executing plan step"}
+{"user_query": "Run a SQL-only plan to fetch account info.", "data_types": "opportunities,contacts,cases,revenue", "limit": "20", "user_id": "user@example.com", "event": "Querying account data from user query"}
+{"user_id": "user@example.com", "query_length": 42, "use_tfidf": true, "event": "Starting account resolution"}
+{"key": "allowed_accounts:user@example.com", "error": "Object of type datetime is not JSON serializable", "event": "Failed to set cache item"}
+{"account_count": 3, "event": "Fitting TF-IDF filter"}
+{"account_count": 3, "event": "Fitting TF-IDF vectorizer on account corpus"}
+{"error": "\n**********************************************************************\n  Resource \u001b[93mpunkt_tab\u001b[0m not found.\n  Please use the NLTK Downloader to obtain the resource:\n\n  \u001b[31m>>> import nltk\n  >>> nltk.download('punkt_tab')\n  \u001b[0m\n  For more information see: https://www.nltk.org/data.html\n\n  Attempted to load \u001b[93mtokenizers/punkt_tab/english/\u001b[0m\n\n  Searched in:\n    - 'C:\\\\Users\\\\mcarz/nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\share\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\lib\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Roaming\\\\nltk_data'\n    - 'C:\\\\nltk_data'\n    - 'D:\\\\nltk_data'\n    - 'E:\\\\nltk_data'\n**********************************************************************\n", "event": "Failed to fit TF-IDF vectorizer"}
+{"error": "\n**********************************************************************\n  Resource \u001b[93mpunkt_tab\u001b[0m not found.\n  Please use the NLTK Downloader to obtain the resource:\n\n  \u001b[31m>>> import nltk\n  >>> nltk.download('punkt_tab')\n  \u001b[0m\n  For more information see: https://www.nltk.org/data.html\n\n  Attempted to load \u001b[93mtokenizers/punkt_tab/english/\u001b[0m\n\n  Searched in:\n    - 'C:\\\\Users\\\\mcarz/nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\share\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\lib\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Roaming\\\\nltk_data'\n    - 'C:\\\\nltk_data'\n    - 'D:\\\\nltk_data'\n    - 'E:\\\\nltk_data'\n**********************************************************************\n", "event": "Failed to fit TF-IDF filter"}
+{"event": "TF-IDF vectorizer not fitted, returning empty results"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"error": "RetryError[<Future at 0x22263f11040 state=finished raised APIConnectionError>]", "event": "Failed to extract account candidates"}
+{"user_id": "user@example.com", "candidates_count": 2, "resolved_count": 0, "requires_disambiguation": true, "confidence": 0.0, "event": "LLM + embeddings resolution completed"}
+{"method": "llm_primary", "combined_confidence": 0.0, "resolved_count": 0, "suggestions_count": 3, "event": "Combined resolution results"}
+{"event_id": "9e87b43f-e7ef-4dbd-918d-6c708920a799", "event_type": "performance_metric", "severity": "info", "user_id": "user@example.com", "session_id": null, "event": "Telemetry event tracked"}
+{"user_query": "Run a SQL-only plan to fetch account info.", "error": "string indices must be integers, not 'str'", "event": "Failed to query account data"}
+{"step_id": "eb028f60-fc7f-4b8e-8fd8-956bc95c02b3", "event": "Step executed successfully"}
+{"plan_id": "45769fe9-99ad-4da4-b07b-dc72d36901a5", "execution_id": "3d0b983a-e584-405b-bf89-644c461674d1", "status": "completed", "duration_seconds": 21.463812, "event": "Plan execution completed"}
+{"database": "telemetry", "event": "Database not found, creating new database"}
+{"database": "telemetry", "container": "events", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 598cad34-ee7e-44de-8089-54f0f3826428, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 598cad34-ee7e-44de-8089-54f0f3826428, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to get or create container for database"}
+{"error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 598cad34-ee7e-44de-8089-54f0f3826428, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 598cad34-ee7e-44de-8089-54f0f3826428, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to store telemetry event"}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 2c05bbee-6962-4625-9afc-5d4e395fa9dd, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 2c05bbee-6962-4625-9afc-5d4e395fa9dd, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: dcf6fa72-7dfd-4ee8-af68-1f11271cf614, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: dcf6fa72-7dfd-4ee8-af68-1f11271cf614, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: d75612e0-6aba-4fe6-a9dd-e111d5fcd89d, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: d75612e0-6aba-4fe6-a9dd-e111d5fcd89d, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"chat_id": "s_sql", "user_id": "user@example.com", "error": "RetryError[<Future at 0x22263ee2410 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
+{"chat_id": "s_sql", "event": "Chat history not found for turn addition"}
+{"chat_id": "s_sql", "user_id": "user@example.com", "error": "Failed to save conversation turn to repository", "event": "Failed to add conversation turn"}
+{"event": "Failed to save conversation turn: Failed to save conversation turn to repository"}
+{"session_id": "s_sql", "turn_id": "f280e860-9351-49ea-a4df-ee793b8f55a5", "response_length": 133, "sources_count": 0, "event": "Chat message processed successfully"}
+DEBUG: [794bbb6a] Handler completed successfully
+DEBUG: [794bbb6a] Response status: 200
+DEBUG: [794bbb6a] Tasks after request: 5
+DEBUG: [794bbb6a] Event loop running: True, closed: False
+{"request_id": "794bbb6a", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "status_code": 200, "duration_ms": 39835, "event": "HTTP request completed"}
+DEBUG: [794bbb6a] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:61295 - "POST /api/v1/chat HTTP/1.1" 200 OK
+{"request_id": "57029c8f", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
+DEBUG: [57029c8f] REQUEST START: POST http://localhost:8000/api/v1/chat
+DEBUG: [57029c8f] Headers: {'host': 'localhost:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-length': '176', 'content-type': 'application/json'}
+DEBUG: [57029c8f] Tasks before request: 4
+DEBUG: [57029c8f] Event loop running: True, closed: False
+DEBUG: [57029c8f] About to call next middleware/handler
+{"url": "http://localhost:8000/api/v1/chat", "event": "Authenticating user request"}
+{"event": "Using fallback RBAC context"}
+{"event": "Fallback RBAC context created successfully"}
+{"session_id": "s_graph", "turn_id": "0a174ddf-3fdf-4dc7-ab3f-6fcb6a50733a", "user_id": "tester_graph", "message_length": 47, "event": "Processing chat message"}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 0249dfde-7ffa-424c-ab1e-27a8e19493ca, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 0249dfde-7ffa-424c-ab1e-27a8e19493ca, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 04f31b57-0900-41ec-bd17-97c76d43fbef, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 04f31b57-0900-41ec-bd17-97c76d43fbef, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: e46f4f16-dcdb-4ea1-9ff1-d274da196570, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: e46f4f16-dcdb-4ea1-9ff1-d274da196570, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"chat_id": "s_graph", "user_id": "user@example.com", "error": "RetryError[<Future at 0x22263eed020 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
+{"chat_id": "s_graph", "user_id": "user@example.com", "event": "Chat history not found"}
 {"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_auto", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "82ea3779-75eb-4ca2-b9fa-8ce5e128d0be", "plan_type": "graph_only", "agent_type": "graph_agent", "user_id": "tester_auto", "event": "Basic plan created"}
-{"plan_id": "82ea3779-75eb-4ca2-b9fa-8ce5e128d0be", "user_id": "tester_auto", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "82ea3779-75eb-4ca2-b9fa-8ce5e128d0be", "execution_id": "e808cbf6-ecdb-43f1-926d-6d260cfe1acf", "user_id": "tester_auto", "event": "Starting plan execution"}
-{"step_id": "2aa6d545-44aa-4e29-be54-3275e4807aa4", "tool_name": "graph_agent", "user_id": "tester_auto", "event": "Executing plan step"}
-{"user_query": "Who is the current President of the United States?", "relationship_types": "", "max_depth": "2", "user_id": "tester_auto", "event": "Finding account relationships from query"}
-{"event_id": "2e8fe25e-1c2a-45e3-8d21-10d9a0c6d50f", "event_type": "performance_metric", "severity": "info", "user_id": "tester_auto", "session_id": null, "event": "Telemetry event tracked"}
-{"user_query": "Who is the current President of the United States?", "error": "'AccountResolverService' object has no attribute 'resolve_entities'", "event": "Failed to find account relationships"}
-{"step_id": "2aa6d545-44aa-4e29-be54-3275e4807aa4", "event": "Step executed successfully"}
-{"plan_id": "82ea3779-75eb-4ca2-b9fa-8ce5e128d0be", "execution_id": "e808cbf6-ecdb-43f1-926d-6d260cfe1acf", "status": "completed", "duration_seconds": 0.000358, "event": "Plan execution completed"}
-{"session_id": "s_no-tool", "turn_id": "404fc1e6-b641-4483-92f5-fa63786ec3e1", "user_message": "Who is the current President of the United States?", "assistant_response": "{\"success\": false, \"error\": \"'AccountResolverService' object has no attribute 'resolve_entities'\", \"...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_no-tool", "turn_id": "404fc1e6-b641-4483-92f5-fa63786ec3e1", "response_length": 166, "sources_count": 0, "event": "Chat message processed successfully"}
-{"error": "'CosmosDBClient' object has no attribute 'get_container'", "event": "Failed to store telemetry event"}
-DEBUG: [51b55f7b] Handler completed successfully
-DEBUG: [51b55f7b] Response status: 200
-DEBUG: [51b55f7b] Tasks after request: 5
-DEBUG: [51b55f7b] Event loop running: True, closed: False
-{"request_id": "51b55f7b", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 11705, "event": "HTTP request completed"}
-DEBUG: [51b55f7b] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:59510 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "53da06d1", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Python-urllib/3.13", "event": "HTTP request started"}
-DEBUG: [53da06d1] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [53da06d1] Headers: {'accept-encoding': 'identity', 'content-length': '169', 'host': '127.0.0.1:8000', 'user-agent': 'Python-urllib/3.13', 'content-type': 'application/json', 'connection': 'close'}
-DEBUG: [53da06d1] Tasks before request: 4
-DEBUG: [53da06d1] Event loop running: True, closed: False
-DEBUG: [53da06d1] About to call next middleware/handler
-{"session_id": "s_sql-only", "turn_id": "99b12402-cf42-40af-a43c-a49113e44a1d", "user_id": "tester_auto", "message_length": 52, "event": "Processing chat message"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: ad797a9b-2eda-45fd-847c-978a67d50184, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: ad797a9b-2eda-45fd-847c-978a67d50184, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: c203f2f6-c4aa-4632-9557-0bb37b4e5f15, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: c203f2f6-c4aa-4632-9557-0bb37b4e5f15, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 6c639bde-5b26-483a-a258-0eb1e04031e0, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 6c639bde-5b26-483a-a258-0eb1e04031e0, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_sql-only", "user_id": "tester_auto", "error": "RetryError[<Future at 0x22f9e72e120 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_sql-only", "user_id": "tester_auto", "event": "Chat history not found"}
+{"user_id": "user@example.com", "error": "'name'", "event": "Failed to get filtered functions"}
+{"agent_name": "planner_system", "tenant_id": "tenant123", "scenario": "general", "prompt_id": "prompt_planner_system", "event": "Retrieved system prompt"}
+{"plan_id": "74c89ff2-3f48-4f0a-aa0a-7eefa23c51d9", "plan_type": "graph_only", "agent_type": "graph_agent", "user_id": "user@example.com", "event": "Basic plan created"}
+{"plan_id": "74c89ff2-3f48-4f0a-aa0a-7eefa23c51d9", "user_id": "user@example.com", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
+{"plan_id": "74c89ff2-3f48-4f0a-aa0a-7eefa23c51d9", "execution_id": "2af5f0c2-a154-4ce9-9fd1-869ba744efcd", "user_id": "user@example.com", "event": "Starting plan execution"}
+{"step_id": "f72cc0f9-f3a3-4067-b298-a7491d937755", "tool_name": "graph_agent", "user_id": "user@example.com", "event": "Executing plan step"}
+{"user_query": "Run a Graph-only plan to explore relationships.", "relationship_types": "", "max_depth": "2", "user_id": "user@example.com", "event": "Finding account relationships from query"}
+{"user_id": "user@example.com", "query_length": 47, "use_tfidf": true, "event": "Starting account resolution"}
+{"key": "allowed_accounts:user@example.com", "error": "Object of type datetime is not JSON serializable", "event": "Failed to set cache item"}
+{"account_count": 3, "event": "Fitting TF-IDF filter"}
+{"account_count": 3, "event": "Fitting TF-IDF vectorizer on account corpus"}
+{"error": "\n**********************************************************************\n  Resource \u001b[93mpunkt_tab\u001b[0m not found.\n  Please use the NLTK Downloader to obtain the resource:\n\n  \u001b[31m>>> import nltk\n  >>> nltk.download('punkt_tab')\n  \u001b[0m\n  For more information see: https://www.nltk.org/data.html\n\n  Attempted to load \u001b[93mtokenizers/punkt_tab/english/\u001b[0m\n\n  Searched in:\n    - 'C:\\\\Users\\\\mcarz/nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\share\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\lib\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Roaming\\\\nltk_data'\n    - 'C:\\\\nltk_data'\n    - 'D:\\\\nltk_data'\n    - 'E:\\\\nltk_data'\n**********************************************************************\n", "event": "Failed to fit TF-IDF vectorizer"}
+{"error": "\n**********************************************************************\n  Resource \u001b[93mpunkt_tab\u001b[0m not found.\n  Please use the NLTK Downloader to obtain the resource:\n\n  \u001b[31m>>> import nltk\n  >>> nltk.download('punkt_tab')\n  \u001b[0m\n  For more information see: https://www.nltk.org/data.html\n\n  Attempted to load \u001b[93mtokenizers/punkt_tab/english/\u001b[0m\n\n  Searched in:\n    - 'C:\\\\Users\\\\mcarz/nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\share\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\lib\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Roaming\\\\nltk_data'\n    - 'C:\\\\nltk_data'\n    - 'D:\\\\nltk_data'\n    - 'E:\\\\nltk_data'\n**********************************************************************\n", "event": "Failed to fit TF-IDF filter"}
+{"event": "TF-IDF vectorizer not fitted, returning empty results"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"error": "RetryError[<Future at 0x22263ef7070 state=finished raised APIConnectionError>]", "event": "Failed to extract account candidates"}
+{"user_id": "user@example.com", "candidates_count": 3, "resolved_count": 0, "requires_disambiguation": true, "confidence": 0.0, "event": "LLM + embeddings resolution completed"}
+{"method": "llm_primary", "combined_confidence": 0.0, "resolved_count": 0, "suggestions_count": 3, "event": "Combined resolution results"}
+{"step_id": "f72cc0f9-f3a3-4067-b298-a7491d937755", "event": "Step executed successfully"}
+{"plan_id": "74c89ff2-3f48-4f0a-aa0a-7eefa23c51d9", "execution_id": "2af5f0c2-a154-4ce9-9fd1-869ba744efcd", "status": "completed", "duration_seconds": 20.967798, "event": "Plan execution completed"}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 01720d85-67cd-4913-8d9f-d45592f996d0, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 01720d85-67cd-4913-8d9f-d45592f996d0, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 0635ee2a-5028-4ed4-adf0-648a0df6eca1, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 0635ee2a-5028-4ed4-adf0-648a0df6eca1, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: b92e3f81-9fe1-4f9c-b044-507fd3906195, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: b92e3f81-9fe1-4f9c-b044-507fd3906195, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"chat_id": "s_graph", "user_id": "user@example.com", "error": "RetryError[<Future at 0x222626b1bd0 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
+{"chat_id": "s_graph", "event": "Chat history not found for turn addition"}
+{"chat_id": "s_graph", "user_id": "user@example.com", "error": "Failed to save conversation turn to repository", "event": "Failed to add conversation turn"}
+{"event": "Failed to save conversation turn: Failed to save conversation turn to repository"}
+{"session_id": "s_graph", "turn_id": "0a174ddf-3fdf-4dc7-ab3f-6fcb6a50733a", "response_length": 209, "sources_count": 0, "event": "Chat message processed successfully"}
+DEBUG: [57029c8f] Handler completed successfully
+DEBUG: [57029c8f] Response status: 200
+DEBUG: [57029c8f] Tasks after request: 5
+DEBUG: [57029c8f] Event loop running: True, closed: False
+{"request_id": "57029c8f", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "status_code": 200, "duration_ms": 39213, "event": "HTTP request completed"}
+DEBUG: [57029c8f] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:61307 - "POST /api/v1/chat HTTP/1.1" 200 OK
+{"request_id": "4661b63b", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
+DEBUG: [4661b63b] REQUEST START: POST http://localhost:8000/api/v1/chat
+DEBUG: [4661b63b] Headers: {'host': 'localhost:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-length': '187', 'content-type': 'application/json'}
+DEBUG: [4661b63b] Tasks before request: 4
+DEBUG: [4661b63b] Event loop running: True, closed: False
+DEBUG: [4661b63b] About to call next middleware/handler
+{"url": "http://localhost:8000/api/v1/chat", "event": "Authenticating user request"}
+{"event": "Using fallback RBAC context"}
+{"event": "Fallback RBAC context created successfully"}
+{"session_id": "s_hybrid", "turn_id": "48a116bb-6ed6-42e1-970b-86479fc2d06d", "user_id": "tester_hybrid", "message_length": 60, "event": "Processing chat message"}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 0ec2b588-7bf0-4a04-8cf8-3c7569f23410, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 0ec2b588-7bf0-4a04-8cf8-3c7569f23410, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: d1624d11-e4a4-4863-9f63-458085fae0b4, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: d1624d11-e4a4-4863-9f63-458085fae0b4, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 020db729-57c1-4447-8819-fb2559026516, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 020db729-57c1-4447-8819-fb2559026516, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"chat_id": "s_hybrid", "user_id": "user@example.com", "error": "RetryError[<Future at 0x22263f236d0 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
+{"chat_id": "s_hybrid", "user_id": "user@example.com", "event": "Chat history not found"}
 {"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_auto", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "03f5a5c9-5caf-43c9-9c41-445b97984b28", "plan_type": "sql_only", "agent_type": "sql_agent", "user_id": "tester_auto", "event": "Basic plan created"}
-{"plan_id": "03f5a5c9-5caf-43c9-9c41-445b97984b28", "user_id": "tester_auto", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "03f5a5c9-5caf-43c9-9c41-445b97984b28", "execution_id": "f523cbce-518f-47bd-b6de-f76b9c22f9d1", "user_id": "tester_auto", "event": "Starting plan execution"}
-{"step_id": "21211d39-84f9-4783-94cd-a0652066f71f", "tool_name": "sql_agent", "user_id": "tester_auto", "event": "Executing plan step"}
-{"user_query": "Show me the quarterly revenue for Retail Giant Corp.", "data_types": "opportunities,contacts,cases,revenue", "limit": "20", "user_id": "tester_auto", "event": "Querying account data from user query"}
-{"user_id": "tester_auto", "query_length": 52, "use_tfidf": true, "event": "Starting account resolution"}
-{"user_id": "tester_auto", "error": "5 validation errors for Account\ndisplay_name\n  Field required [type=missing, input_value={'id': 'ACC-001', 'name':...', 'type': 'enterprise'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\nowner_user_id\n  Field required [type=missing, input_value={'id': 'ACC-001', 'name':...', 'type': 'enterprise'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\nowner_email\n  Field required [type=missing, input_value={'id': 'ACC-001', 'name':...', 'type': 'enterprise'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\ncreated_at\n  Field required [type=missing, input_value={'id': 'ACC-001', 'name':...', 'type': 'enterprise'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\nupdated_at\n  Field required [type=missing, input_value={'id': 'ACC-001', 'name':...', 'type': 'enterprise'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing", "event": "Failed to get allowed accounts"}
-{"user_id": "tester_auto", "event": "No allowed accounts found for user"}
-{"event_id": "ee1be2a6-f370-4868-b914-5a02905a768e", "event_type": "performance_metric", "severity": "info", "user_id": "tester_auto", "session_id": null, "event": "Telemetry event tracked"}
-{"user_query": "Show me the quarterly revenue for Retail Giant Corp.", "error": "string indices must be integers, not 'str'", "event": "Failed to query account data"}
-{"step_id": "21211d39-84f9-4783-94cd-a0652066f71f", "event": "Step executed successfully"}
-{"plan_id": "03f5a5c9-5caf-43c9-9c41-445b97984b28", "execution_id": "f523cbce-518f-47bd-b6de-f76b9c22f9d1", "status": "completed", "duration_seconds": 0.300637, "event": "Plan execution completed"}
-{"session_id": "s_sql-only", "turn_id": "99b12402-cf42-40af-a43c-a49113e44a1d", "user_message": "Show me the quarterly revenue for Retail Giant Corp.", "assistant_response": "{\"success\": false, \"error\": \"string indices must be integers, not 'str'\", \"user_query\": \"Show me the...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_sql-only", "turn_id": "99b12402-cf42-40af-a43c-a49113e44a1d", "response_length": 143, "sources_count": 0, "event": "Chat message processed successfully"}
-{"error": "'CosmosDBClient' object has no attribute 'get_container'", "event": "Failed to store telemetry event"}
-DEBUG: [53da06d1] Handler completed successfully
-DEBUG: [53da06d1] Response status: 200
-DEBUG: [53da06d1] Tasks after request: 5
-DEBUG: [53da06d1] Event loop running: True, closed: False
-{"request_id": "53da06d1", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 10474, "event": "HTTP request completed"}
-DEBUG: [53da06d1] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:59514 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "f34aca2d", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Python-urllib/3.13", "event": "HTTP request started"}
-DEBUG: [f34aca2d] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [f34aca2d] Headers: {'accept-encoding': 'identity', 'content-length': '162', 'host': '127.0.0.1:8000', 'user-agent': 'Python-urllib/3.13', 'content-type': 'application/json', 'connection': 'close'}
-DEBUG: [f34aca2d] Tasks before request: 4
-DEBUG: [f34aca2d] Event loop running: True, closed: False
-DEBUG: [f34aca2d] About to call next middleware/handler
-{"session_id": "s_graph-only", "turn_id": "93bedffd-71f6-4657-b140-9d96387153fd", "user_id": "tester_auto", "message_length": 43, "event": "Processing chat message"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: f6f0c385-c8c4-418f-b9fc-55e40134e3bf, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: f6f0c385-c8c4-418f-b9fc-55e40134e3bf, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 7ec24843-d8db-4c85-a090-cd3afa5feb5a, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 7ec24843-d8db-4c85-a090-cd3afa5feb5a, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: b66c597c-00da-4a43-b83e-7fbd5c738b55, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: b66c597c-00da-4a43-b83e-7fbd5c738b55, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_graph-only", "user_id": "tester_auto", "error": "RetryError[<Future at 0x22f9e42eb60 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_graph-only", "user_id": "tester_auto", "event": "Chat history not found"}
-{"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_auto", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "1a5a5bdc-12dc-4416-b932-9f28e7ef36ea", "plan_type": "graph_only", "agent_type": "graph_agent", "user_id": "tester_auto", "event": "Basic plan created"}
-{"plan_id": "1a5a5bdc-12dc-4416-b932-9f28e7ef36ea", "user_id": "tester_auto", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "1a5a5bdc-12dc-4416-b932-9f28e7ef36ea", "execution_id": "7b4ba088-77c0-4d52-beba-489abba975ac", "user_id": "tester_auto", "event": "Starting plan execution"}
-{"step_id": "6b28274d-e69c-404f-a7aa-e1d135ca368f", "tool_name": "graph_agent", "user_id": "tester_auto", "event": "Executing plan step"}
-{"user_query": "Who is associated with TechCorp Industries?", "relationship_types": "", "max_depth": "2", "user_id": "tester_auto", "event": "Finding account relationships from query"}
-{"event_id": "cbca6ec3-bfa1-4714-83ab-0ea7cb44bad2", "event_type": "performance_metric", "severity": "info", "user_id": "tester_auto", "session_id": null, "event": "Telemetry event tracked"}
-{"user_query": "Who is associated with TechCorp Industries?", "error": "'AccountResolverService' object has no attribute 'resolve_entities'", "event": "Failed to find account relationships"}
-{"step_id": "6b28274d-e69c-404f-a7aa-e1d135ca368f", "event": "Step executed successfully"}
-{"plan_id": "1a5a5bdc-12dc-4416-b932-9f28e7ef36ea", "execution_id": "7b4ba088-77c0-4d52-beba-489abba975ac", "status": "completed", "duration_seconds": 0.001074, "event": "Plan execution completed"}
-{"session_id": "s_graph-only", "turn_id": "93bedffd-71f6-4657-b140-9d96387153fd", "user_message": "Who is associated with TechCorp Industries?", "assistant_response": "{\"success\": false, \"error\": \"'AccountResolverService' object has no attribute 'resolve_entities'\", \"...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_graph-only", "turn_id": "93bedffd-71f6-4657-b140-9d96387153fd", "response_length": 159, "sources_count": 0, "event": "Chat message processed successfully"}
-{"error": "'CosmosDBClient' object has no attribute 'get_container'", "event": "Failed to store telemetry event"}
-DEBUG: [f34aca2d] Handler completed successfully
-DEBUG: [f34aca2d] Response status: 200
-DEBUG: [f34aca2d] Tasks after request: 5
-DEBUG: [f34aca2d] Event loop running: True, closed: False
-{"request_id": "f34aca2d", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 9917, "event": "HTTP request completed"}
-DEBUG: [f34aca2d] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:59515 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "19696176", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Python-urllib/3.13", "event": "HTTP request started"}
-DEBUG: [19696176] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [19696176] Headers: {'accept-encoding': 'identity', 'content-length': '170', 'host': '127.0.0.1:8000', 'user-agent': 'Python-urllib/3.13', 'content-type': 'application/json', 'connection': 'close'}
-DEBUG: [19696176] Tasks before request: 4
-DEBUG: [19696176] Event loop running: True, closed: False
-DEBUG: [19696176] About to call next middleware/handler
-{"session_id": "s_hybrid", "turn_id": "d0e4eb38-c88c-4e52-9442-bffe1d62bddc", "user_id": "tester_auto", "message_length": 55, "event": "Processing chat message"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 95a5c260-028a-4b72-9e73-3c0ab5bffeba, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 95a5c260-028a-4b72-9e73-3c0ab5bffeba, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 9f53245f-fbcd-4692-8ddc-9a6647790fa0, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 9f53245f-fbcd-4692-8ddc-9a6647790fa0, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 9888827a-ccf7-4f2a-9273-7d15bac8f947, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 9888827a-ccf7-4f2a-9273-7d15bac8f947, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_hybrid", "user_id": "tester_auto", "error": "RetryError[<Future at 0x22f9e6e6360 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_hybrid", "user_id": "tester_auto", "event": "Chat history not found"}
-{"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_auto", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "3035a29d-d021-4b09-91e5-8cb09922bd9b", "plan_type": "sql_only", "agent_type": "sql_agent", "user_id": "tester_auto", "event": "Basic plan created"}
-{"plan_id": "3035a29d-d021-4b09-91e5-8cb09922bd9b", "user_id": "tester_auto", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "3035a29d-d021-4b09-91e5-8cb09922bd9b", "execution_id": "a4100a34-fe8b-41b3-8ca3-1c7d3314874a", "user_id": "tester_auto", "event": "Starting plan execution"}
-{"step_id": "c339a86e-785c-41d4-a13e-d5d8a9bbab87", "tool_name": "sql_agent", "user_id": "tester_auto", "event": "Executing plan step"}
-{"user_query": "Give me revenue and relationship info for acc_microsoft", "data_types": "opportunities,contacts,cases,revenue", "limit": "20", "user_id": "tester_auto", "event": "Querying account data from user query"}
-{"user_id": "tester_auto", "query_length": 55, "use_tfidf": true, "event": "Starting account resolution"}
-{"user_id": "tester_auto", "error": "5 validation errors for Account\ndisplay_name\n  Field required [type=missing, input_value={'id': 'ACC-001', 'name':...', 'type': 'enterprise'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\nowner_user_id\n  Field required [type=missing, input_value={'id': 'ACC-001', 'name':...', 'type': 'enterprise'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\nowner_email\n  Field required [type=missing, input_value={'id': 'ACC-001', 'name':...', 'type': 'enterprise'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\ncreated_at\n  Field required [type=missing, input_value={'id': 'ACC-001', 'name':...', 'type': 'enterprise'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing\nupdated_at\n  Field required [type=missing, input_value={'id': 'ACC-001', 'name':...', 'type': 'enterprise'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/missing", "event": "Failed to get allowed accounts"}
-{"user_id": "tester_auto", "event": "No allowed accounts found for user"}
-{"event_id": "306f7616-69f5-4244-8037-a1084a3b1f83", "event_type": "performance_metric", "severity": "info", "user_id": "tester_auto", "session_id": null, "event": "Telemetry event tracked"}
-{"user_query": "Give me revenue and relationship info for acc_microsoft", "error": "string indices must be integers, not 'str'", "event": "Failed to query account data"}
-{"step_id": "c339a86e-785c-41d4-a13e-d5d8a9bbab87", "event": "Step executed successfully"}
-{"plan_id": "3035a29d-d021-4b09-91e5-8cb09922bd9b", "execution_id": "a4100a34-fe8b-41b3-8ca3-1c7d3314874a", "status": "completed", "duration_seconds": 0.23026, "event": "Plan execution completed"}
-{"session_id": "s_hybrid", "turn_id": "d0e4eb38-c88c-4e52-9442-bffe1d62bddc", "user_message": "Give me revenue and relationship info for acc_microsoft", "assistant_response": "{\"success\": false, \"error\": \"string indices must be integers, not 'str'\", \"user_query\": \"Give me rev...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_hybrid", "turn_id": "d0e4eb38-c88c-4e52-9442-bffe1d62bddc", "response_length": 146, "sources_count": 0, "event": "Chat message processed successfully"}
-{"error": "'CosmosDBClient' object has no attribute 'get_container'", "event": "Failed to store telemetry event"}
-DEBUG: [19696176] Handler completed successfully
-DEBUG: [19696176] Response status: 200
-DEBUG: [19696176] Tasks after request: 5
-DEBUG: [19696176] Event loop running: True, closed: False
-{"request_id": "19696176", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 10176, "event": "HTTP request completed"}
-DEBUG: [19696176] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:59517 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "a3cedf89", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
-DEBUG: [a3cedf89] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [a3cedf89] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-length': '169', 'content-type': 'application/json'}
-DEBUG: [a3cedf89] Tasks before request: 4
-DEBUG: [a3cedf89] Event loop running: True, closed: False
-DEBUG: [a3cedf89] About to call next middleware/handler
-{"session_id": "s_no_tool", "turn_id": "10faf471-3f00-4e8d-8904-9c228be1a48b", "user_id": "tester_no_tool", "message_length": 50, "event": "Processing chat message"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 75bfc79a-1196-4d2b-b5c4-8b9b10ac8cb6, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 75bfc79a-1196-4d2b-b5c4-8b9b10ac8cb6, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 86c14a67-80f6-4207-b6b5-39e9333e658d, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 86c14a67-80f6-4207-b6b5-39e9333e658d, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 24a6f5d5-6554-4aca-a809-6b9929a309b9, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 24a6f5d5-6554-4aca-a809-6b9929a309b9, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_no_tool", "user_id": "tester_no_tool", "error": "RetryError[<Future at 0x22f9e4b9db0 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_no_tool", "user_id": "tester_no_tool", "event": "Chat history not found"}
-{"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_no_tool", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "1ce1b5f2-a264-4739-99a7-76561ca0ca2b", "plan_type": "graph_only", "agent_type": "graph_agent", "user_id": "tester_no_tool", "event": "Basic plan created"}
-{"plan_id": "1ce1b5f2-a264-4739-99a7-76561ca0ca2b", "user_id": "tester_no_tool", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "1ce1b5f2-a264-4739-99a7-76561ca0ca2b", "execution_id": "3aaa8abc-3a9a-4032-97d5-936cf6f0958d", "user_id": "tester_no_tool", "event": "Starting plan execution"}
-{"step_id": "dd8e1fea-ae3a-453b-b756-5bdbc0d78a3e", "tool_name": "graph_agent", "user_id": "tester_no_tool", "event": "Executing plan step"}
-{"user_query": "Who is the current President of the United States?", "relationship_types": "", "max_depth": "2", "user_id": "tester_no_tool", "event": "Finding account relationships from query"}
-{"event_id": "f003f842-e500-44a2-a2ea-43fddd5403f9", "event_type": "performance_metric", "severity": "info", "user_id": "tester_no_tool", "session_id": null, "event": "Telemetry event tracked"}
-{"user_query": "Who is the current President of the United States?", "error": "'AccountResolverService' object has no attribute 'resolve_entities'", "event": "Failed to find account relationships"}
-{"step_id": "dd8e1fea-ae3a-453b-b756-5bdbc0d78a3e", "event": "Step executed successfully"}
-{"plan_id": "1ce1b5f2-a264-4739-99a7-76561ca0ca2b", "execution_id": "3aaa8abc-3a9a-4032-97d5-936cf6f0958d", "status": "completed", "duration_seconds": 0.00043, "event": "Plan execution completed"}
-{"session_id": "s_no_tool", "turn_id": "10faf471-3f00-4e8d-8904-9c228be1a48b", "user_message": "Who is the current President of the United States?", "assistant_response": "{\"success\": false, \"error\": \"'AccountResolverService' object has no attribute 'resolve_entities'\", \"...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_no_tool", "turn_id": "10faf471-3f00-4e8d-8904-9c228be1a48b", "response_length": 166, "sources_count": 0, "event": "Chat message processed successfully"}
-{"error": "'CosmosDBClient' object has no attribute 'get_container'", "event": "Failed to store telemetry event"}
-DEBUG: [a3cedf89] Handler completed successfully
-DEBUG: [a3cedf89] Response status: 200
-DEBUG: [a3cedf89] Tasks after request: 5
-DEBUG: [a3cedf89] Event loop running: True, closed: False
-{"request_id": "a3cedf89", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 15175, "event": "HTTP request completed"}
-DEBUG: [a3cedf89] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:60025 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "76bd37c5", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
-DEBUG: [76bd37c5] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [76bd37c5] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-length': '160', 'content-type': 'application/json'}
-DEBUG: [76bd37c5] Tasks before request: 4
-DEBUG: [76bd37c5] Event loop running: True, closed: False
-DEBUG: [76bd37c5] About to call next middleware/handler
-{"session_id": "s_sql", "turn_id": "50603f84-1b9e-40e6-b032-a991905f7291", "user_id": "tester_sql", "message_length": 49, "event": "Processing chat message"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 35ef2a2e-abae-4564-8df2-9dcaf1649e28, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 35ef2a2e-abae-4564-8df2-9dcaf1649e28, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: feb53717-a972-4736-8852-0bb3932f5305, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: feb53717-a972-4736-8852-0bb3932f5305, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 16738749-5030-486b-9220-c4a27a35f0d0, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 16738749-5030-486b-9220-c4a27a35f0d0, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_sql", "user_id": "tester_sql", "error": "RetryError[<Future at 0x22f9e347350 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_sql", "user_id": "tester_sql", "event": "Chat history not found"}
-{"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_sql", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "5dfce0ab-f071-4582-841e-e09007bd3cb8", "plan_type": "no_tool", "agent_type": "direct_response", "user_id": "tester_sql", "event": "Basic plan created"}
-{"plan_id": "5dfce0ab-f071-4582-841e-e09007bd3cb8", "user_id": "tester_sql", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "5dfce0ab-f071-4582-841e-e09007bd3cb8", "execution_id": "01c32ccb-3e02-4ef6-8bb8-3b582564fd30", "user_id": "tester_sql", "event": "Starting plan execution"}
-{"step_id": "9f5db37d-fe1f-458e-b2d7-24416ff75813", "tool_name": "direct_response", "user_id": "tester_sql", "event": "Executing plan step"}
-{"step_id": "9f5db37d-fe1f-458e-b2d7-24416ff75813", "event": "Direct response step executed successfully"}
-{"plan_id": "5dfce0ab-f071-4582-841e-e09007bd3cb8", "execution_id": "01c32ccb-3e02-4ef6-8bb8-3b582564fd30", "status": "completed", "duration_seconds": 0.000392, "event": "Plan execution completed"}
-{"session_id": "s_sql", "turn_id": "50603f84-1b9e-40e6-b032-a991905f7291", "user_message": "List opportunities for TechCorp Industries in Q3.", "assistant_response": "I'm a specialized Salesforce Q&A assistant focused on helping with business data, accounts, opportun...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_sql", "turn_id": "50603f84-1b9e-40e6-b032-a991905f7291", "response_length": 344, "sources_count": 0, "event": "Chat message processed successfully"}
-DEBUG: [76bd37c5] Handler completed successfully
-DEBUG: [76bd37c5] Response status: 200
-DEBUG: [76bd37c5] Tasks after request: 5
-DEBUG: [76bd37c5] Event loop running: True, closed: False
-{"request_id": "76bd37c5", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 9153, "event": "HTTP request completed"}
-DEBUG: [76bd37c5] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:60034 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "4ac2e7f4", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
-DEBUG: [4ac2e7f4] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [4ac2e7f4] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-length': '169', 'content-type': 'application/json'}
-DEBUG: [4ac2e7f4] Tasks before request: 4
-DEBUG: [4ac2e7f4] Event loop running: True, closed: False
-DEBUG: [4ac2e7f4] About to call next middleware/handler
-{"session_id": "s_no_tool", "turn_id": "723b3743-fcfc-4342-9bd4-48869fff3526", "user_id": "tester_no_tool", "message_length": 50, "event": "Processing chat message"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 195704f7-9085-4eb6-98b7-38ec4cdb1f24, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 195704f7-9085-4eb6-98b7-38ec4cdb1f24, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 778e9694-afcf-45bf-a4c0-ebf4cd038a30, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 778e9694-afcf-45bf-a4c0-ebf4cd038a30, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 8b8c92aa-bb20-4d35-ac64-bbc49d30da9d, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 8b8c92aa-bb20-4d35-ac64-bbc49d30da9d, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_no_tool", "user_id": "tester_no_tool", "error": "RetryError[<Future at 0x22f9cf95c50 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_no_tool", "user_id": "tester_no_tool", "event": "Chat history not found"}
-{"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_no_tool", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "07aba193-4202-4eda-a53e-49ac267d0ae3", "plan_type": "graph_only", "agent_type": "graph_agent", "user_id": "tester_no_tool", "event": "Basic plan created"}
-{"plan_id": "07aba193-4202-4eda-a53e-49ac267d0ae3", "user_id": "tester_no_tool", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "07aba193-4202-4eda-a53e-49ac267d0ae3", "execution_id": "bf029a5a-386d-4fd3-8e85-970591ee8bd7", "user_id": "tester_no_tool", "event": "Starting plan execution"}
-{"step_id": "c006dfc0-5609-40ef-8f18-a08a3945ca15", "tool_name": "graph_agent", "user_id": "tester_no_tool", "event": "Executing plan step"}
-{"user_query": "Who is the current President of the United States?", "relationship_types": "", "max_depth": "2", "user_id": "tester_no_tool", "event": "Finding account relationships from query"}
-{"event_id": "2f5efa2a-8254-44fd-9ec0-6b41c9b277ff", "event_type": "performance_metric", "severity": "info", "user_id": "tester_no_tool", "session_id": null, "event": "Telemetry event tracked"}
-{"user_query": "Who is the current President of the United States?", "error": "'AccountResolverService' object has no attribute 'resolve_entities'", "event": "Failed to find account relationships"}
-{"step_id": "c006dfc0-5609-40ef-8f18-a08a3945ca15", "event": "Step executed successfully"}
-{"plan_id": "07aba193-4202-4eda-a53e-49ac267d0ae3", "execution_id": "bf029a5a-386d-4fd3-8e85-970591ee8bd7", "status": "completed", "duration_seconds": 0.001253, "event": "Plan execution completed"}
-{"session_id": "s_no_tool", "turn_id": "723b3743-fcfc-4342-9bd4-48869fff3526", "user_message": "Who is the current President of the United States?", "assistant_response": "{\"success\": false, \"error\": \"'AccountResolverService' object has no attribute 'resolve_entities'\", \"...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_no_tool", "turn_id": "723b3743-fcfc-4342-9bd4-48869fff3526", "response_length": 166, "sources_count": 0, "event": "Chat message processed successfully"}
-{"error": "'CosmosDBClient' object has no attribute 'get_container'", "event": "Failed to store telemetry event"}
-DEBUG: [4ac2e7f4] Handler completed successfully
-DEBUG: [4ac2e7f4] Response status: 200
-DEBUG: [4ac2e7f4] Tasks after request: 5
-DEBUG: [4ac2e7f4] Event loop running: True, closed: False
-{"request_id": "4ac2e7f4", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 11496, "event": "HTTP request completed"}
-DEBUG: [4ac2e7f4] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:60041 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "50192ea2", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
-DEBUG: [50192ea2] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [50192ea2] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-length': '160', 'content-type': 'application/json'}
-DEBUG: [50192ea2] Tasks before request: 4
-DEBUG: [50192ea2] Event loop running: True, closed: False
-DEBUG: [50192ea2] About to call next middleware/handler
-{"session_id": "s_sql", "turn_id": "fa448fdf-1bbc-4edf-99ab-b87f234477c6", "user_id": "tester_sql", "message_length": 49, "event": "Processing chat message"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 3be234a5-2e99-4ab1-b1ca-10bf20f56153, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 3be234a5-2e99-4ab1-b1ca-10bf20f56153, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 706595ef-f7cb-47ac-90a6-545ebd6e4f61, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 706595ef-f7cb-47ac-90a6-545ebd6e4f61, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 91db3218-a928-4b80-88b5-82d4a4b7a485, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 91db3218-a928-4b80-88b5-82d4a4b7a485, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_sql", "user_id": "tester_sql", "error": "RetryError[<Future at 0x22f9cf954d0 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_sql", "user_id": "tester_sql", "event": "Chat history not found"}
-{"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_sql", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "13297033-c682-48c5-b5cb-da74544a6d99", "plan_type": "no_tool", "agent_type": "direct_response", "user_id": "tester_sql", "event": "Basic plan created"}
-{"plan_id": "13297033-c682-48c5-b5cb-da74544a6d99", "user_id": "tester_sql", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "13297033-c682-48c5-b5cb-da74544a6d99", "execution_id": "a819f1e2-cec3-4606-a83e-c7695a7a12e1", "user_id": "tester_sql", "event": "Starting plan execution"}
-{"step_id": "e8200125-4c82-4a5e-9119-b16eaef432b1", "tool_name": "direct_response", "user_id": "tester_sql", "event": "Executing plan step"}
-{"step_id": "e8200125-4c82-4a5e-9119-b16eaef432b1", "event": "Direct response step executed successfully"}
-{"plan_id": "13297033-c682-48c5-b5cb-da74544a6d99", "execution_id": "a819f1e2-cec3-4606-a83e-c7695a7a12e1", "status": "completed", "duration_seconds": 0.000127, "event": "Plan execution completed"}
-{"session_id": "s_sql", "turn_id": "fa448fdf-1bbc-4edf-99ab-b87f234477c6", "user_message": "List opportunities for TechCorp Industries in Q3.", "assistant_response": "I'm a specialized Salesforce Q&A assistant focused on helping with business data, accounts, opportun...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_sql", "turn_id": "fa448fdf-1bbc-4edf-99ab-b87f234477c6", "response_length": 344, "sources_count": 0, "event": "Chat message processed successfully"}
-DEBUG: [50192ea2] Handler completed successfully
-DEBUG: [50192ea2] Response status: 200
-DEBUG: [50192ea2] Tasks after request: 5
-DEBUG: [50192ea2] Event loop running: True, closed: False
-{"request_id": "50192ea2", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 10107, "event": "HTTP request completed"}
-DEBUG: [50192ea2] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:60044 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "19e4fd8b", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
-DEBUG: [19e4fd8b] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [19e4fd8b] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-length': '182', 'content-type': 'application/json'}
-DEBUG: [19e4fd8b] Tasks before request: 4
-DEBUG: [19e4fd8b] Event loop running: True, closed: False
-DEBUG: [19e4fd8b] About to call next middleware/handler
-{"session_id": "s_graph", "turn_id": "da75b598-3ebf-47fe-96b3-7faebd71e242", "user_id": "tester_graph", "message_length": 67, "event": "Processing chat message"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: a11f9253-39d9-4baf-ac29-ce09099a44ed, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: a11f9253-39d9-4baf-ac29-ce09099a44ed, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 94043ca0-8b8d-40f2-868f-69891cda3e27, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 94043ca0-8b8d-40f2-868f-69891cda3e27, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: d08f5088-64f0-4144-8cd0-b96c95dcc3b9, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: d08f5088-64f0-4144-8cd0-b96c95dcc3b9, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_graph", "user_id": "tester_graph", "error": "RetryError[<Future at 0x22f9e4918d0 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_graph", "user_id": "tester_graph", "event": "Chat history not found"}
-{"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_graph", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "e6fb7d8d-d215-4bd6-9fd8-e62fb9466f3d", "plan_type": "graph_only", "agent_type": "graph_agent", "user_id": "tester_graph", "event": "Basic plan created"}
-{"plan_id": "e6fb7d8d-d215-4bd6-9fd8-e62fb9466f3d", "user_id": "tester_graph", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "e6fb7d8d-d215-4bd6-9fd8-e62fb9466f3d", "execution_id": "d93a53bc-9b2e-4b10-87dd-7a4c14d1de1f", "user_id": "tester_graph", "event": "Starting plan execution"}
-{"step_id": "4bd8497e-a3b2-407a-bb21-c69e28b22e6e", "tool_name": "graph_agent", "user_id": "tester_graph", "event": "Executing plan step"}
-{"user_query": "Show connections between TechCorp Industries and Retail Giant Corp.", "relationship_types": "", "max_depth": "2", "user_id": "tester_graph", "event": "Finding account relationships from query"}
-{"event_id": "001da514-7f7d-47ae-8116-17c419417213", "event_type": "performance_metric", "severity": "info", "user_id": "tester_graph", "session_id": null, "event": "Telemetry event tracked"}
-{"user_query": "Show connections between TechCorp Industries and Retail Giant Corp.", "error": "'AccountResolverService' object has no attribute 'resolve_entities'", "event": "Failed to find account relationships"}
-{"step_id": "4bd8497e-a3b2-407a-bb21-c69e28b22e6e", "event": "Step executed successfully"}
-{"plan_id": "e6fb7d8d-d215-4bd6-9fd8-e62fb9466f3d", "execution_id": "d93a53bc-9b2e-4b10-87dd-7a4c14d1de1f", "status": "completed", "duration_seconds": 0.000387, "event": "Plan execution completed"}
-{"session_id": "s_graph", "turn_id": "da75b598-3ebf-47fe-96b3-7faebd71e242", "user_message": "Show connections between TechCorp Industries and Retail Giant Corp.", "assistant_response": "{\"success\": false, \"error\": \"'AccountResolverService' object has no attribute 'resolve_entities'\", \"...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_graph", "turn_id": "da75b598-3ebf-47fe-96b3-7faebd71e242", "response_length": 183, "sources_count": 0, "event": "Chat message processed successfully"}
-{"error": "'CosmosDBClient' object has no attribute 'get_container'", "event": "Failed to store telemetry event"}
-DEBUG: [19e4fd8b] Handler completed successfully
-DEBUG: [19e4fd8b] Response status: 200
-DEBUG: [19e4fd8b] Tasks after request: 5
-DEBUG: [19e4fd8b] Event loop running: True, closed: False
-{"request_id": "19e4fd8b", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 9500, "event": "HTTP request completed"}
-DEBUG: [19e4fd8b] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:60045 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "8174a8fa", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
-DEBUG: [8174a8fa] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [8174a8fa] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-length': '211', 'content-type': 'application/json'}
-DEBUG: [8174a8fa] Tasks before request: 4
-DEBUG: [8174a8fa] Event loop running: True, closed: False
-DEBUG: [8174a8fa] About to call next middleware/handler
-{"session_id": "s_hybrid", "turn_id": "2879688d-d4bb-4cc5-8b63-0d21fb4972b8", "user_id": "tester_hybrid", "message_length": 94, "event": "Processing chat message"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 853bd84e-1e7e-433a-b7db-2d3d352326d8, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 853bd84e-1e7e-433a-b7db-2d3d352326d8, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 134b5c07-74d8-4008-a93d-c5ab6856ad86, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 134b5c07-74d8-4008-a93d-c5ab6856ad86, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 3cb46540-435c-49d9-9df9-c460f63e277b, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 3cb46540-435c-49d9-9df9-c460f63e277b, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container"}
-{"chat_id": "s_hybrid", "user_id": "tester_hybrid", "error": "RetryError[<Future at 0x22f9e50b7d0 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
-{"chat_id": "s_hybrid", "user_id": "tester_hybrid", "event": "Chat history not found"}
-{"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "tester_hybrid", "error": "'name'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "default", "scenario": "general", "event": "System prompt not found"}
-{"plan_id": "aa3557e8-cda8-4264-948d-26002f1e2667", "plan_type": "no_tool", "agent_type": "direct_response", "user_id": "tester_hybrid", "event": "Basic plan created"}
-{"plan_id": "aa3557e8-cda8-4264-948d-26002f1e2667", "user_id": "tester_hybrid", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "aa3557e8-cda8-4264-948d-26002f1e2667", "execution_id": "090bd3c5-3a86-46ea-a76d-69748bf3b509", "user_id": "tester_hybrid", "event": "Starting plan execution"}
-{"step_id": "ddc4fb73-0243-410c-88c2-5f967f580e91", "tool_name": "direct_response", "user_id": "tester_hybrid", "event": "Executing plan step"}
-{"step_id": "ddc4fb73-0243-410c-88c2-5f967f580e91", "event": "Direct response step executed successfully"}
-{"plan_id": "aa3557e8-cda8-4264-948d-26002f1e2667", "execution_id": "090bd3c5-3a86-46ea-a76d-69748bf3b509", "status": "completed", "duration_seconds": 9.5e-05, "event": "Plan execution completed"}
-{"session_id": "s_hybrid", "turn_id": "2879688d-d4bb-4cc5-8b63-0d21fb4972b8", "user_message": "Find the latest contract for TechCorp and its primary owner email, then summarize key clauses.", "assistant_response": "Artificial Intelligence (AI) refers to computer systems that can perform tasks typically requiring h...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "s_hybrid", "turn_id": "2879688d-d4bb-4cc5-8b63-0d21fb4972b8", "response_length": 321, "sources_count": 0, "event": "Chat message processed successfully"}
-DEBUG: [8174a8fa] Handler completed successfully
-DEBUG: [8174a8fa] Response status: 200
-DEBUG: [8174a8fa] Tasks after request: 5
-DEBUG: [8174a8fa] Event loop running: True, closed: False
-{"request_id": "8174a8fa", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 9804, "event": "HTTP request completed"}
-DEBUG: [8174a8fa] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:60047 - "POST /api/v1/chat HTTP/1.1" 200 OK
+{"user_id": "user@example.com", "error": "'name'", "event": "Failed to get filtered functions"}
+{"agent_name": "planner_system", "tenant_id": "tenant123", "scenario": "general", "prompt_id": "prompt_planner_system", "event": "Retrieved system prompt"}
+{"plan_id": "e8a4930e-cfbd-4b72-b805-caa8de94f3ef", "plan_type": "sql_only", "agent_type": "sql_agent", "user_id": "user@example.com", "event": "Basic plan created"}
+{"plan_id": "e8a4930e-cfbd-4b72-b805-caa8de94f3ef", "user_id": "user@example.com", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
+{"plan_id": "e8a4930e-cfbd-4b72-b805-caa8de94f3ef", "execution_id": "868f4fc1-6555-44ec-9ea3-d7fd4af62aa5", "user_id": "user@example.com", "event": "Starting plan execution"}
+{"step_id": "b0c5f9aa-d7dd-45e3-940c-7faa84803cc5", "tool_name": "sql_agent", "user_id": "user@example.com", "event": "Executing plan step"}
+{"user_query": "Use any tools necessary to answer and combine SQL and Graph.", "data_types": "opportunities,contacts,cases,revenue", "limit": "20", "user_id": "user@example.com", "event": "Querying account data from user query"}
+{"user_id": "user@example.com", "query_length": 60, "use_tfidf": true, "event": "Starting account resolution"}
+{"key": "allowed_accounts:user@example.com", "error": "Object of type datetime is not JSON serializable", "event": "Failed to set cache item"}
+{"account_count": 3, "event": "Fitting TF-IDF filter"}
+{"account_count": 3, "event": "Fitting TF-IDF vectorizer on account corpus"}
+{"error": "\n**********************************************************************\n  Resource \u001b[93mpunkt_tab\u001b[0m not found.\n  Please use the NLTK Downloader to obtain the resource:\n\n  \u001b[31m>>> import nltk\n  >>> nltk.download('punkt_tab')\n  \u001b[0m\n  For more information see: https://www.nltk.org/data.html\n\n  Attempted to load \u001b[93mtokenizers/punkt_tab/english/\u001b[0m\n\n  Searched in:\n    - 'C:\\\\Users\\\\mcarz/nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\share\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\lib\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Roaming\\\\nltk_data'\n    - 'C:\\\\nltk_data'\n    - 'D:\\\\nltk_data'\n    - 'E:\\\\nltk_data'\n**********************************************************************\n", "event": "Failed to fit TF-IDF vectorizer"}
+{"error": "\n**********************************************************************\n  Resource \u001b[93mpunkt_tab\u001b[0m not found.\n  Please use the NLTK Downloader to obtain the resource:\n\n  \u001b[31m>>> import nltk\n  >>> nltk.download('punkt_tab')\n  \u001b[0m\n  For more information see: https://www.nltk.org/data.html\n\n  Attempted to load \u001b[93mtokenizers/punkt_tab/english/\u001b[0m\n\n  Searched in:\n    - 'C:\\\\Users\\\\mcarz/nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\share\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python313\\\\lib\\\\nltk_data'\n    - 'C:\\\\Users\\\\mcarz\\\\AppData\\\\Roaming\\\\nltk_data'\n    - 'C:\\\\nltk_data'\n    - 'D:\\\\nltk_data'\n    - 'E:\\\\nltk_data'\n**********************************************************************\n", "event": "Failed to fit TF-IDF filter"}
+{"event": "TF-IDF vectorizer not fitted, returning empty results"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"error": "RetryError[<Future at 0x22263e35bd0 state=finished raised APIConnectionError>]", "event": "Failed to extract account candidates"}
+{"user_id": "user@example.com", "candidates_count": 4, "resolved_count": 0, "requires_disambiguation": true, "confidence": 0.0, "event": "LLM + embeddings resolution completed"}
+{"method": "llm_primary", "combined_confidence": 0.0, "resolved_count": 0, "suggestions_count": 3, "event": "Combined resolution results"}
+{"event_id": "92351d2b-1e84-482d-bca5-2ffe9e033dfd", "event_type": "performance_metric", "severity": "info", "user_id": "user@example.com", "session_id": null, "event": "Telemetry event tracked"}
+{"user_query": "Use any tools necessary to answer and combine SQL and Graph.", "error": "string indices must be integers, not 'str'", "event": "Failed to query account data"}
+{"step_id": "b0c5f9aa-d7dd-45e3-940c-7faa84803cc5", "event": "Step executed successfully"}
+{"plan_id": "e8a4930e-cfbd-4b72-b805-caa8de94f3ef", "execution_id": "868f4fc1-6555-44ec-9ea3-d7fd4af62aa5", "status": "completed", "duration_seconds": 22.15821, "event": "Plan execution completed"}
+{"database": "telemetry", "event": "Database not found, creating new database"}
+{"database": "telemetry", "container": "events", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 88cc1d03-d931-44e4-b49d-9f81ef696e1a, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 88cc1d03-d931-44e4-b49d-9f81ef696e1a, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to get or create container for database"}
+{"error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 88cc1d03-d931-44e4-b49d-9f81ef696e1a, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 88cc1d03-d931-44e4-b49d-9f81ef696e1a, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to store telemetry event"}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: d777843a-8349-406a-950e-9454ce6bce42, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: d777843a-8349-406a-950e-9454ce6bce42, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 2e079b3f-a0f5-4540-8f90-fe3abf61db18, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 2e079b3f-a0f5-4540-8f90-fe3abf61db18, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"container": "chat_history", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: e4002305-b7e9-4b2a-a553-44b7b3e25ebb, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs/appdb/colls/] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: e4002305-b7e9-4b2a-a553-44b7b3e25ebb, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to create container due to AAD data-plane authorization. Cosmos may require key auth for management operations or pre-created containers. See https://aka.ms/cosmos-native-rbac for details."}
+{"chat_id": "s_hybrid", "user_id": "user@example.com", "error": "RetryError[<Future at 0x22263f234d0 state=finished raised CosmosHttpResponseError>]", "event": "Failed to get chat history"}
+{"chat_id": "s_hybrid", "event": "Chat history not found for turn addition"}
+{"chat_id": "s_hybrid", "user_id": "user@example.com", "error": "Failed to save conversation turn to repository", "event": "Failed to add conversation turn"}
+{"event": "Failed to save conversation turn: Failed to save conversation turn to repository"}
+{"session_id": "s_hybrid", "turn_id": "48a116bb-6ed6-42e1-970b-86479fc2d06d", "response_length": 151, "sources_count": 0, "event": "Chat message processed successfully"}
+DEBUG: [4661b63b] Handler completed successfully
+DEBUG: [4661b63b] Response status: 200
+DEBUG: [4661b63b] Tasks after request: 5
+DEBUG: [4661b63b] Event loop running: True, closed: False
+{"request_id": "4661b63b", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "status_code": 200, "duration_ms": 40426, "event": "HTTP request completed"}
+DEBUG: [4661b63b] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:61319 - "POST /api/v1/chat HTTP/1.1" 200 OK

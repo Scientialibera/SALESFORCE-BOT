@@ -17,20 +17,38 @@ Notes:
 - The upload script expects the app settings in .env and will attempt to create a Cosmos DB client using the configured endpoint and credentials.
 - The scripts consolidate previously scattered files under scripts/assets for easier management.
  
-Centralization:
-- All prompts and agent/function JSON definitions should live in `scripts/assets/prompts` and `scripts/assets/functions` respectively.
-- `upload_artifacts.py` reads only from `scripts/assets/*` and will upload everything to Cosmos; chatbot/functions has been removed to avoid duplicates.
+```markdown
+Scripts for local development and for uploading prompts and agent/function artifacts to Cosmos DB.
 
-Functions layout:
-- `scripts/assets/functions/agents` - agent manifests (registrations) describing agent capabilities that the planner uses to route requests.
-- `scripts/assets/functions/tools` - tool/function definitions (the actual callable tools the agents use, e.g. SQL execution, graph traversal).
+Overview
+ - `set_env.ps1` - merges `.env.example` into `.env` (preserving existing values) and, if provided, performs best-effort Azure discovery for AOAI and Cosmos endpoints and AOAI deployment names. Requires the Azure CLI (az) and an authenticated principal.
+ - `start_server.ps1` - starts the FastAPI app with uvicorn and writes logs to `server.log`.
+ - `upload_artifacts.py` - deterministic uploader that loads settings from `.env` and uploads prompts and function/agent definitions from `scripts/assets` into Cosmos DB.
 
-The upload script will:
-1. Upload system prompts from `scripts/assets/prompts`.
-2. Upload tool definitions from `scripts/assets/functions/tools` (reads JSON arrays under the `functions` key).
-3. Upload agent registrations from `scripts/assets/functions/agents` (these are converted into function-like entries so the planner can discover agents and their metadata).
+Key security and provisioning notes
+ - These scripts do NOT use or recommend account keys. All provisioning and management operations are performed using AAD via the Azure CLI (az) or must be pre-created by an administrator.
+ - If you do not have management permissions, pre-create the Cosmos DB database and containers (or ask an administrator to do so). The uploader will fail with a clear error if it cannot access the database/containers.
 
-This keeps a clear separation between agent manifests and callable tools.
+Usage (typical dev flow)
+1. From the project root, merge and populate .env (optionally provide a resource group to auto-discover endpoints):
+   Powershell: .\scripts\set_env.ps1 -ResourceGroup <your-resource-group>
+2. Start the API in the background (writes logs to `server.log`):
+   Powershell: .\scripts\start_server.ps1
+3. Wait until the server /health endpoint returns 200, then upload prompts and functions:
+   python .\scripts\upload_artifacts.py
 
-Loading at runtime:
-- The app loads prompts and function definitions from Cosmos at startup. Use `upload_artifacts.py` to ensure Cosmos contains the latest artifacts before starting the app in dev or test environments.
+Where the artifacts live
+ - `scripts/assets/prompts` - system prompts (markdown files). Filenames map to prompt IDs.
+ - `scripts/assets/functions/tools` - tool/function JSON definitions. Files should contain a top-level `functions` array.
+ - `scripts/assets/functions/agents` - agent registration JSON files describing agent metadata.
+
+How the uploader behaves
+ - The uploader loads `.env` to obtain AOAI/COSMOS/SEARCH settings.
+ - Before attempting to connect, it performs a best-effort provisioning step using the Azure CLI (AAD) to create the database and containers if they are missing and the signed-in principal has permissions.
+ - If provisioning is not allowed for the signed-in principal, the uploader will exit with an error and instructions to pre-create the required Cosmos resources.
+
+Troubleshooting
+ - If the uploader fails with Cosmos DB authorization errors, ensure your az account has the necessary data-plane RBAC role (e.g., Cosmos DB Built-in Data Contributor) or create the database/containers manually.
+ - If AOAI deployments are not discovered automatically, set `AOAI_CHAT_DEPLOYMENT` and `AOAI_EMBEDDING_DEPLOYMENT` in `.env`.
+
+```

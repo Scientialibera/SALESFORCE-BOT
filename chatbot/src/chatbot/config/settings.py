@@ -73,7 +73,7 @@ class GremlinSettings(BaseSettings):
 class SearchSettings(BaseSettings):
     """Azure AI Search configuration."""
     
-    endpoint: str = Field(..., description="Azure AI Search service endpoint")
+    endpoint: Optional[str] = Field(default=None, description="Azure AI Search service endpoint")
     index_name: str = Field(default="contracts", description="Search index name")
     semantic_config: str = Field(default="default", description="Semantic search configuration")
     api_version: str = Field(default="2023-11-01", description="Search API version")
@@ -112,6 +112,15 @@ class RBACSettings(BaseSettings):
     admin_users: List[str] = Field(default_factory=list, description="Admin user emails")
     default_access_level: str = Field(default="read", description="Default access level")
     cache_duration: int = Field(default=3600, description="RBAC cache duration in seconds")
+    
+    @validator("admin_users", pre=True)
+    def parse_admin_users(cls, v):
+        """Parse admin users from string or list, handling empty values."""
+        if v is None or v == "":
+            return []
+        if isinstance(v, str):
+            return [user.strip() for user in v.split(",") if user.strip()]
+        return v
     
     class Config:
         env_prefix = "RBAC_"

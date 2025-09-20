@@ -553,7 +553,7 @@ IBM
 Google
 Amazon"""
             
-            response = await self.aoai_client.generate_completion(
+            response = await self.aoai_client.create_chat_completion(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_query}
@@ -562,11 +562,12 @@ Amazon"""
                 temperature=0.1
             )
             
-            if response and response.content:
+            if response and 'choices' in response and len(response['choices']) > 0:
+                content = response['choices'][0]['message']['content']
                 # Parse the response to extract names
                 names = [
                     name.strip()
-                    for name in response.content.strip().split('\n')
+                    for name in content.strip().split('\n')
                     if name.strip() and len(name.strip()) > 1
                 ]
                 
@@ -651,41 +652,6 @@ Amazon"""
             # TODO: Implement actual account fetching from SQL schema repository
             # For now, return mock accounts based on user roles
             mock_accounts = self._get_mock_accounts_for_user(rbac_context)
-
-                    # Backwards-compatible adapter expected by some agents
-                    async def resolve_entities(
-                        self,
-                        user_query: str,
-                        rbac_context: RBACContext,
-                        confidence_threshold: Optional[float] = None,
-                    ) -> List[Dict[str, Any]]:
-                        """
-                        Adapter method to provide a simple list of resolved entity dicts
-                        when callers (like older agents) expect `resolve_entities`.
-                        Returns list of {id, name, confidence}.
-                        """
-                        if confidence_threshold is None:
-                            confidence_threshold = self.confidence_threshold
-
-                        resolution = await self.resolve_account(user_query, rbac_context)
-                        resolved = resolution.get("resolved_accounts") or []
-
-                        out = []
-                        for acc in resolved:
-                            if isinstance(acc, dict):
-                                out.append({
-                                    "id": acc.get("id"),
-                                    "name": acc.get("name"),
-                                    "confidence": acc.get("confidence", resolution.get("confidence", 1.0)),
-                                })
-                            else:
-                                out.append({
-                                    "id": getattr(acc, "id", None),
-                                    "name": getattr(acc, "name", None),
-                                    "confidence": getattr(acc, "confidence", resolution.get("confidence", 1.0)),
-                                })
-
-                        return out
             
             # Cache the results
             account_dicts = [acc.__dict__ for acc in mock_accounts]
@@ -712,17 +678,44 @@ Amazon"""
             List of mock accounts
         """
         # Generate different accounts based on user roles
+        # Build fully-populated mock Account objects to satisfy pydantic validation
+        from datetime import datetime
+        now = datetime.utcnow()
+        def mk(id, name, acct_type="enterprise", industry="Technology", description=""):
+            return Account(
+                id=id,
+                name=name,
+                display_name=name,
+                account_type=acct_type,
+                industry=industry,
+                annual_revenue=None,
+                number_of_employees=None,
+                billing_address=None,
+                shipping_address=None,
+                phone=None,
+                website=None,
+                owner_user_id="owner-001",
+                owner_email="owner@example.com",
+                aliases=[],
+                name_embedding=None,
+                is_active=True,
+                created_at=now,
+                updated_at=now,
+                sf_last_modified=None,
+                sf_system_modstamp=None,
+            )
+
         base_accounts = [
-            Account(id="ACC-001", name="Microsoft Corporation", type="enterprise"),
-            Account(id="ACC-002", name="Apple Inc.", type="enterprise"),
-            Account(id="ACC-003", name="Amazon.com Inc.", type="enterprise"),
-            Account(id="ACC-004", name="Google LLC", type="enterprise"),
-            Account(id="ACC-005", name="Meta Platforms Inc.", type="enterprise"),
-            Account(id="ACC-006", name="Tesla Inc.", type="enterprise"),
-            Account(id="ACC-007", name="Netflix Inc.", type="enterprise"),
-            Account(id="ACC-008", name="Salesforce Inc.", type="enterprise"),
-            Account(id="ACC-009", name="Oracle Corporation", type="enterprise"),
-            Account(id="ACC-010", name="IBM Corporation", type="enterprise"),
+            mk("ACC-001", "Microsoft Corporation", "enterprise", "Technology", "Leading technology company specializing in software and cloud services"),
+            mk("ACC-002", "Apple Inc.", "enterprise", "Technology", "Consumer electronics and software company"),
+            mk("ACC-003", "Amazon.com Inc.", "enterprise", "E-commerce", "Global e-commerce and cloud computing giant"),
+            mk("ACC-004", "Google LLC", "enterprise", "Technology", "Internet search and advertising technology company"),
+            mk("ACC-005", "Meta Platforms Inc.", "enterprise", "Technology", "Social media and virtual reality company"),
+            mk("ACC-006", "Tesla Inc.", "enterprise", "Automotive", "Electric vehicle and clean energy company"),
+            mk("ACC-007", "Netflix Inc.", "enterprise", "Entertainment", "Streaming entertainment service"),
+            mk("ACC-008", "Salesforce Inc.", "enterprise", "Technology", "Customer relationship management platform"),
+            mk("ACC-009", "Oracle Corporation", "enterprise", "Technology", "Database software and cloud computing company"),
+            mk("ACC-010", "IBM Corporation", "enterprise", "Technology", "Technology and consulting services company"),
         ]
         
         # Filter based on user roles (simplified logic)
@@ -818,3 +811,38 @@ Amazon"""
         except Exception as e:
             logger.error("Failed to get embedding", text=text, error=str(e))
             return None
+
+    # Backwards-compatible adapter expected by some agents
+    async def resolve_entities(
+        self,
+        user_query: str,
+        rbac_context: RBACContext,
+        confidence_threshold: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Adapter method to provide a simple list of resolved entity dicts
+        when callers (like older agents) expect `resolve_entities`.
+        Returns list of {id, name, confidence}.
+        """
+        if confidence_threshold is None:
+            confidence_threshold = self.confidence_threshold
+
+        resolution = await self.resolve_account(user_query, rbac_context)
+        resolved = resolution.get("resolved_accounts") or []
+
+        out: List[Dict[str, Any]] = []
+        for acc in resolved:
+            if isinstance(acc, dict):
+                out.append({
+                    "id": acc.get("id"),
+                    "name": acc.get("name"),
+                    "confidence": acc.get("confidence", resolution.get("confidence", 1.0)),
+                })
+            else:
+                out.append({
+                    "id": getattr(acc, "id", None),
+                    "name": getattr(acc, "name", None),
+                    "confidence": getattr(acc, "confidence", resolution.get("confidence", 1.0)),
+                })
+
+        return out
