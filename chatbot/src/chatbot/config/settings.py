@@ -27,8 +27,6 @@ class AzureOpenAISettings(BaseSettings):
         env_prefix = "AOAI_"
         env_file = ".env"
         extra = "ignore"
-        env_file = ".env"
-        extra = "ignore"
 
 
 class CosmosDBSettings(BaseSettings):

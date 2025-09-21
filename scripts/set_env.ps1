@@ -151,11 +151,9 @@ if ($ResourceGroup) {
 			}
 		}
 
-		if ($chatDeployment) { $envVars['AOAI_CHAT_DEPLOYMENT'] = $chatDeployment; Write-Output "Detected chat deployment: $chatDeployment" } 
-		elseif (-not $envVars.ContainsKey('AOAI_CHAT_DEPLOYMENT')) { $envVars['AOAI_CHAT_DEPLOYMENT'] = 'chat-deployment'; Write-Warning "No chat deployment detected; using placeholder 'chat-deployment'" }
+		if ($chatDeployment) { $envVars['AOAI_CHAT_DEPLOYMENT'] = $chatDeployment; Write-Output "Detected chat deployment: $chatDeployment" }
 
-		if ($embedDeployment) { $envVars['AOAI_EMBEDDING_DEPLOYMENT'] = $embedDeployment; Write-Output "Detected embedding deployment: $embedDeployment" } 
-		elseif (-not $envVars.ContainsKey('AOAI_EMBEDDING_DEPLOYMENT')) { $envVars['AOAI_EMBEDDING_DEPLOYMENT'] = 'embedding-deployment'; Write-Warning "No embedding deployment detected; using placeholder 'embedding-deployment'" }
+		if ($embedDeployment) { $envVars['AOAI_EMBEDDING_DEPLOYMENT'] = $embedDeployment; Write-Output "Detected embedding deployment: $embedDeployment" }
 
 		# If we still have placeholders, prefer any existing AZURE_OPENAI_* keys found in the merged env
 		$altChatKeys = @('AZURE_OPENAI_CHAT_DEPLOYMENT','AZURE_OPENAI_CHAT_DEPLOYMENT_NAME','AZURE_OPENAI_CHAT_DEPLOYMENTNAME','AZURE_OPENAI_CHAT_DEPLOYMENT')
@@ -177,9 +175,7 @@ if ($ResourceGroup) {
 		}
 
 		# Set AZURE_OPENAI_ENDPOINT from AOAI_ENDPOINT
-		if (-not $envVars.ContainsKey('AZURE_OPENAI_ENDPOINT') -or $envVars['AZURE_OPENAI_ENDPOINT'] -match 'your') {
-			$envVars['AZURE_OPENAI_ENDPOINT'] = $aoaiEndpoint
-		}
+		# Note: AZURE_OPENAI_ENDPOINT is not in .env.example, so we don't set it
 	} else {
 		Write-Warning "No Azure OpenAI account detected in RG $ResourceGroup"
 	}
@@ -187,47 +183,57 @@ if ($ResourceGroup) {
 	# Persist the resource group into the merged env so other scripts can use it
 	$envVars['CONTAINER_APP_RESOURCE_GROUP'] = $ResourceGroup
 
-	# Discover Cosmos DB
-	$cosmos = az resource list -g $ResourceGroup --query "[?type=='Microsoft.DocumentDB/databaseAccounts']" -o json | ConvertFrom-Json
-	if ($cosmos -and $cosmos.Length -gt 0) {
-		$cos = $cosmos[0]
-		$cosmosName = $cos.name
-		$cosmosEndpoint = "https://$($cosmosName).documents.azure.com:443/"
-		Write-Output "Detected Cosmos DB account: $cosmosName -> $cosmosEndpoint"
-		$envVars['COSMOS_ENDPOINT'] = $cosmosEndpoint
-		if (-not $envVars.ContainsKey('COSMOS_DATABASE_NAME')) { $envVars['COSMOS_DATABASE_NAME'] = 'appdb' }
+	# Discover Cosmos DB accounts
+	$cosmosAccounts = az resource list -g $ResourceGroup --query "[?type=='Microsoft.DocumentDB/databaseAccounts']" -o json | ConvertFrom-Json
+	if ($cosmosAccounts -and $cosmosAccounts.Length -gt 0) {
+		foreach ($cos in $cosmosAccounts) {
+			$cosmosName = $cos.name
+			$cosmosEndpoint = "https://$($cosmosName).documents.azure.com:443/"
+			
+			# Check capabilities to determine API type
+			$capabilities = az cosmosdb show -g $ResourceGroup -n $cosmosName --query "capabilities" -o json | ConvertFrom-Json
+			
+			$hasGremlin = $false
+			if ($capabilities) {
+				foreach ($cap in $capabilities) {
+					if ($cap.name -eq "EnableGremlin") {
+						$hasGremlin = $true
+						break
+					}
+				}
+			}
+			
+			if ($hasGremlin) {
+				# This is a Gremlin/Graph API account
+				$gremlinEndpoint = "https://$($cosmosName).gremlin.cosmos.azure.com:443/"
+				Write-Output "Detected Cosmos DB Gremlin account: $cosmosName -> $gremlinEndpoint"
+				$envVars['AZURE_COSMOS_GREMLIN_ENDPOINT'] = $gremlinEndpoint
+			} else {
+				# This is a SQL API account
+				Write-Output "Detected Cosmos DB SQL account: $cosmosName -> $cosmosEndpoint"
+				$envVars['COSMOS_ENDPOINT'] = $cosmosEndpoint
+				if (-not $envVars.ContainsKey('COSMOS_DATABASE_NAME')) { $envVars['COSMOS_DATABASE_NAME'] = 'appdb' }
+				# Set default container names for SQL API
+				if (-not $envVars.ContainsKey('COSMOS_CHAT_CONTAINER')) { $envVars['COSMOS_CHAT_CONTAINER'] = 'chat_history' }
+				if (-not $envVars.ContainsKey('COSMOS_CACHE_CONTAINER')) { $envVars['COSMOS_CACHE_CONTAINER'] = 'cache' }
+				if (-not $envVars.ContainsKey('COSMOS_FEEDBACK_CONTAINER')) { $envVars['COSMOS_FEEDBACK_CONTAINER'] = 'feedback' }
+				if (-not $envVars.ContainsKey('COSMOS_PROCESSED_FILES_CONTAINER')) { $envVars['COSMOS_PROCESSED_FILES_CONTAINER'] = 'processed_files' }
+				if (-not $envVars.ContainsKey('COSMOS_PROMPTS_CONTAINER')) { $envVars['COSMOS_PROMPTS_CONTAINER'] = 'prompts' }
+				if (-not $envVars.ContainsKey('COSMOS_SQL_SCHEMA_CONTAINER')) { $envVars['COSMOS_SQL_SCHEMA_CONTAINER'] = 'sql_schema' }
+				if (-not $envVars.ContainsKey('COSMOS_ACCOUNT_RESOLVER_CONTAINER')) { $envVars['COSMOS_ACCOUNT_RESOLVER_CONTAINER'] = 'account_resolver' }
+				if (-not $envVars.ContainsKey('COSMOS_AGENT_FUNCTIONS_CONTAINER')) { $envVars['COSMOS_AGENT_FUNCTIONS_CONTAINER'] = 'agent_functions' }
+				if (-not $envVars.ContainsKey('COSMOS_CONTRACTS_TEXT_CONTAINER')) { $envVars['COSMOS_CONTRACTS_TEXT_CONTAINER'] = 'contracts_text' }
+			}
+		}
 	} else {
-		Write-Warning "No Cosmos DB account detected in RG $ResourceGroup"
+		Write-Warning "No Cosmos DB accounts detected in RG $ResourceGroup"
 	}
 
 	# Attempt to detect Gremlin/graph endpoint
-	try {
-		$allRes = az resource list -g $ResourceGroup -o json | ConvertFrom-Json
-		$gremlinRes = $allRes | Where-Object { $_.Name -match '(?i)gremlin|graph' }
-		if ($gremlinRes -and $gremlinRes.Length -gt 0) {
-			$g = $gremlinRes[0]
-			$gremlinEndpoint = "https://$($g.Name).gremlin.cosmos.azure.com:443/"
-			Write-Output "Detected Gremlin-ish resource: $($g.Name) -> $gremlinEndpoint"
-			$envVars['GREMLIN_ENDPOINT'] = $gremlinEndpoint
-		}
-	} catch {
-		Write-Warning "Failed to detect gremlin resource: $_"
-	}
+	# Note: GREMLIN_ENDPOINT is not in .env.example, so we don't set it
 
 	# Detect Application Insights
-	try {
-		$appInsights = az resource list -g $ResourceGroup --query "[?type=='Microsoft.Insights/components']" -o json | ConvertFrom-Json
-		if ($appInsights -and $appInsights.Length -gt 0) {
-			$ai = $appInsights[0]
-			$aiName = $ai.name
-			$region = $ai.location
-			$connString = "InstrumentationKey=$($ai.properties.InstrumentationKey);IngestionEndpoint=https://$region.in.applicationinsights.azure.com/"
-			Write-Output "Detected Application Insights: $aiName -> $connString"
-			$envVars['APPLICATIONINSIGHTS_CONNECTION_STRING'] = $connString
-		}
-	} catch {
-		Write-Warning "Failed to detect Application Insights: $_"
-	}
+	# Note: APPLICATIONINSIGHTS_CONNECTION_STRING is not in .env.example, so we don't set it
 
 	# Detect Azure Search
 	try {
@@ -264,176 +270,7 @@ if ($ResourceGroup) {
 	}
 }
 
-# Set default values for variables that are empty or placeholders
-$defaults = @{
-    'COSMOS_DATABASE_NAME' = 'appdb'
-    'COSMOS_CHAT_CONTAINER' = 'chat_history'
-    'COSMOS_CACHE_CONTAINER' = 'cache'
-    'COSMOS_FEEDBACK_CONTAINER' = 'feedback'
-    'COSMOS_PROCESSED_FILES_CONTAINER' = 'processed_files'
-    'COSMOS_PROMPTS_CONTAINER' = 'prompts'
-    'COSMOS_SQL_SCHEMA_CONTAINER' = 'sql_schema'
-    'COSMOS_ACCOUNT_RESOLVER_CONTAINER' = 'account_resolver'
-    'COSMOS_AGENT_FUNCTIONS_CONTAINER' = 'agent_functions'
-    'AZURE_COSMOS_DATABASE' = 'chatbot'
-    'AZURE_COSMOS_HISTORY_CONTAINER' = 'chat_history'
-    'AZURE_COSMOS_FEEDBACK_CONTAINER' = 'feedback'
-    'AZURE_COSMOS_GREMLIN_DATABASE' = 'graphdb'
-    'AZURE_COSMOS_GREMLIN_GRAPH' = 'relationships'
-    'AZURE_COSMOS_GREMLIN_PORT' = '443'
-    'APP_LOG_LEVEL' = 'INFO'
-    'DEV_ENABLE_SWAGGER' = 'true'
-    'SQL_CONNECTION_TIMEOUT_SECONDS' = '30'
-    'GRAPH_AGENT_MAX_TRAVERSAL_DEPTH' = '5'
-    'GREMLIN_GRAPH_NAME' = 'account_graph'
-    'AZURE_OPENAI_TEMPERATURE' = '0.7'
-    'SQL_MAX_ROWS' = '1000'
-    'AZURE_OPENAI_PRESENCE_PENALTY' = '0.0'
-    'RBAC_ENFORCE_RBAC' = 'false'
-    'SECURITY_JWT_SECRET_KEY' = 'dev-secret'
-    'SHAREPOINT_CLIENT_ID' = 'your-sharepoint-app-id'
-    'SQL_QUERY_TIMEOUT_SECONDS' = '30'
-    'AZURE_OPENAI_FREQUENCY_PENALTY' = '0.0'
-    'SECURITY_ACCESS_TOKEN_EXPIRE_MINUTES' = '60'
-    'POWERBI_CLIENT_ID' = 'your-powerbi-app-id'
-    'HEALTH_CHECK_OPENAI_ENABLED' = 'true'
-    'HYBRID_AGENT_CONFIDENCE_THRESHOLD' = '0.8'
-    'RBAC_CACHE_TTL_MINUTES' = '30'
-    'GRAPH_AGENT_QUERY_TIMEOUT_SECONDS' = '30'
-    'TFIDF_MIN_SIMILARITY' = '0.3'
-    'RATE_LIMIT_ENABLED' = 'true'
-    'SK_MAX_TOKENS' = '4000'
-    'DEV_ENABLE_DEBUG_ROUTES' = 'false'
-    'SQL_ENCRYPT' = 'true'
-    'ACCOUNT_RESOLUTION_CONFIDENCE_THRESHOLD' = '0.8'
-    'TELEMETRY_SAMPLING_RATE' = '0.1'
-    'APP_VERSION' = '1.0.0'
-    'TELEMETRY_ENABLE_TRACING' = 'true'
-    'SQL_AGENT_MAX_QUERY_COMPLEXITY' = 'high'
-    'RATE_LIMIT_BURST_SIZE' = '10'
-    'CACHE_MAX_SIZE_MB' = '100'
-    'ENABLE_QUERY_LOGGING' = 'true'
-    'CHAT_HISTORY_TTL_DAYS' = '30'
-    'COSMOS_DB_DATABASE_NAME' = 'salesforce_chatbot'
-    'HEALTH_CHECK_COSMOS_ENABLED' = 'true'
-    'SQL_AGENT_NAME' = 'sql_data_agent'
-    'FEATURE_ENABLE_GRAPH_QUERIES' = 'true'
-    'APP_ENVIRONMENT' = 'production'
-    'DYNAMICS_365_CLIENT_ID' = 'your-dynamics-app-id'
-    'RATE_LIMIT_BURST' = '10'
-    'AZURE_COSMOS_GREMLIN_ENDPOINT' = 'your-cosmos-gremlin.gremlin.cosmos.azure.com'
-    'SQL_AGENT_MAX_ROWS_RETURNED' = '1000'
-    'HEALTH_CHECK_GREMLIN_ENABLED' = 'true'
-    'SQL_DRIVER' = 'ODBC Driver 18 for SQL Server'
-    'COSMOS_CONTRACTS_TEXT_CONTAINER' = 'contracts_text'
-    'RBAC_JWT_AUDIENCE' = 'your-application-id'
-    'APP_NAME' = 'Salesforce Chatbot'
-    'RBAC_ADMIN_ROLES' = 'Global Administrator,Application Administrator'
-    'MOCK_COSMOS_GREMLIN' = 'false'
-    'VECTOR_SEARCH_TOP_K' = '5'
-    'RBAC_DEFAULT_ROLE' = 'User'
-    'DOCKER_REGISTRY' = 'your-registry.azurecr.io'
-    'COSMOS_DB_REQUEST_TIMEOUT_SECONDS' = '30'
-    'GREMLIN_MAX_RETRY_ATTEMPTS' = '3'
-    'ACCOUNT_RESOLVER_CONFIDENCE_THRESHOLD' = '0.8'
-    'RBAC_ENABLED' = 'true'
-    'COSMOS_DB_MAX_RETRY_ATTEMPTS' = '3'
-    'HYBRID_AGENT_NAME' = 'hybrid_reasoning_agent'
-    'MOCK_FABRIC_SQL' = 'false'
-    'TELEMETRY_ENABLE_LOGGING' = 'true'
-    'COSMOS_DB_CHAT_HISTORY_CONTAINER' = 'chat_history'
-    'SECURITY_ALLOWED_HOSTS' = 'your-domain.com,*.your-domain.com'
-    'DOCKER_IMAGE_NAME' = 'salesforce-chatbot'
-    'SQL_MAX_POOL_SIZE' = '20'
-    'TELEMETRY_SERVICE_VERSION' = '1.0.0'
-    'FEATURE_ENABLE_HYBRID_MODE' = 'true'
-    'SK_TEMPERATURE' = '0.1'
-    'APP_CORS_ALLOW_CREDENTIALS' = 'true'
-    'RATE_LIMIT_REQUESTS_PER_MINUTE' = '60'
-    'APP_DEBUG' = 'false'
-    'HEALTH_CHECK_TIMEOUT_SECONDS' = '5'
-    'HEALTH_CHECK_SQL_ENABLED' = 'true'
-    'GREMLIN_REQUEST_TIMEOUT_SECONDS' = '30'
-    'COSMOS_DB_AGENT_FUNCTIONS_CONTAINER' = 'agent_functions'
-    'APP_MAX_REQUEST_SIZE_MB' = '10'
-    'RBAC_MANAGER_ROLES' = 'Sales Manager,Account Manager'
-    'ACCOUNT_RESOLVER_MAX_SUGGESTIONS' = '3'
-    'ENABLE_SAFETY_FILTERS' = 'true'
-    'AZURE_OPENAI_MAX_TOKENS' = '4000'
-    'AZURE_OPENAI_TOP_P' = '0.9'
-    'CACHE_DEFAULT_TTL_SECONDS' = '3600'
-    'GREMLIN_CONNECTION_POOL_SIZE' = '10'
-    'DEBUG_MODE' = 'false'
-    'CACHE_EMBEDDINGS_TTL_SECONDS' = '86400'
-    'CACHE_SCHEMA_TTL_SECONDS' = '7200'
-    'CACHE_PROMPTS_TTL_SECONDS' = '1800'
-    'TELEMETRY_ENABLE_METRICS' = 'true'
-    'FEATURE_ENABLE_FEEDBACK' = 'true'
-    'FEATURE_ENABLE_ANALYTICS' = 'true'
-    'FEATURE_ENABLE_CACHING' = 'true'
-    'FEATURE_ENABLE_ACCOUNT_RESOLUTION' = 'true'
-    'FEATURE_ENABLE_SQL_QUERIES' = 'true'
-    'APP_CORS_ORIGINS' = 'https://your-frontend-domain.com,https://your-portal.com'
-    'SECURITY_SECRET_KEY' = 'your-super-secret-key-change-this-in-production'
-    'SECURITY_ALGORITHM' = 'HS256'
-    'SECURITY_HTTPS_ONLY' = 'true'
-    'SK_PLANNER_TYPE' = 'sequential'
-    'SK_MAX_PLAN_STEPS' = '10'
-    'SK_PLAN_TIMEOUT_SECONDS' = '120'
-    'SK_FUNCTION_TIMEOUT_SECONDS' = '30'
-    'SK_MAX_TOKENS_PER_FUNCTION' = '1000'
-    'SK_ENABLE_TRACING' = 'true'
-    'GRAPH_AGENT_NAME' = 'knowledge_graph_agent'
-    'GRAPH_AGENT_MAX_RESULTS_RETURNED' = '100'
-    'HYBRID_AGENT_SQL_WEIGHT' = '0.6'
-    'HYBRID_AGENT_GRAPH_WEIGHT' = '0.4'
-    'ACCOUNT_RESOLVER_EMBEDDING_MODEL' = 'text-embedding-3-small'
-    'TELEMETRY_SERVICE_NAME' = 'salesforce-chatbot'
-    'CONTAINER_APP_NAME' = 'salesforce-chatbot'
-    'DOCKER_IMAGE_TAG' = 'latest'
-    'DEV_MOCK_AZURE_AUTH' = 'false'
-    'DEV_MOCK_DATABASE' = 'false'
-    'DEV_CORS_ALLOW_ALL' = 'false'
-    'SHAREPOINT_SITE_URL' = 'https://your-tenant.sharepoint.com/sites/your-site'
-    'POWERBI_WORKSPACE_ID' = 'your-workspace-id'
-    'DYNAMICS_365_URL' = 'https://your-org.crm.dynamics.com'
-    'COSMOS_DB_CACHE_CONTAINER' = 'cache'
-    'COSMOS_DB_FEEDBACK_CONTAINER' = 'feedback'
-    'COSMOS_DB_PROMPTS_CONTAINER' = 'prompts'
-    'COSMOS_DB_SQL_SCHEMA_CONTAINER' = 'sql_schema'
-    'COSMOS_DB_RETRY_DELAY_SECONDS' = '2'
-    'GREMLIN_DATABASE_NAME' = 'salesforce_graph'
-    'SQL_SERVER_NAME' = 'your-fabric-workspace.datawarehouse.fabric.microsoft.com'
-    'SQL_DATABASE_NAME' = 'your_warehouse_name'
-    'SQL_COMMAND_TIMEOUT_SECONDS' = '300'
-    'RBAC_JWT_ISSUER' = 'https://sts.windows.net/your-tenant-id/'
-    'APP_HOST' = '0.0.0.0'
-    'APP_PORT' = '8000'
-    'APP_WORKERS' = '4'
-    'APP_API_PREFIX' = '/api/v1'
-    'AZURE_OPENAI_ENDPOINT' = 'https://your-aoai.openai.azure.com/'
-    'AZURE_COSMOS_ENDPOINT' = 'https://your-cosmos-account.documents.azure.com:443/'
-    'AZURE_COSMOS_CACHE_CONTAINER' = 'cache'
-    'AZURE_SEARCH_ENDPOINT' = 'https://your-search.search.windows.net'
-    'AZURE_SEARCH_INDEX' = 'contracts-index'
-    'FABRIC_SQL_ENDPOINT' = 'your-workspace.datawarehouse.fabric.microsoft.com'
-    'FABRIC_SQL_DATABASE' = 'lakehouse_db'
-    'AZURE_AD_CLIENT_ID' = 'your-client-id'
-    'DEV_USER_EMAIL' = ''
-    'ENVIRONMENT' = 'development'
-    'LOG_LEVEL' = 'INFO'
-    'MAX_TOKENS_PER_REQUEST' = '4000'
-    'TELEMETRY_ENABLE_TELEMETRY' = 'false'
-    'VECTOR_SEARCH_SCORE_THRESHOLD' = '0.7'
-    'DEV_MODE' = 'true'
-}
-
-foreach ($key in $defaults.Keys) {
-    if (-not $envVars.ContainsKey($key) -or -not $envVars[$key] -or $envVars[$key] -match '^your|^$') {
-        $envVars[$key] = $defaults[$key]
-        Write-Output "Set default for $key = $($defaults[$key])"
-    }
-}
+# Write merged vars to .env and chatbot/.env
 if ($ResourceGroup) {
 	if (-not $envVars.ContainsKey('CONTAINER_APP_RESOURCE_GROUP') -or $envVars['CONTAINER_APP_RESOURCE_GROUP'] -match 'your') {
 		$envVars['CONTAINER_APP_RESOURCE_GROUP'] = $ResourceGroup
@@ -456,63 +293,6 @@ if ($ResourceGroup) {
 			}
 		}
 	} catch { Write-Warning "Could not detect subscription id or tenant id: $_" }
-}
-
-# If AZURE_COSMOS_ENDPOINT contains 'your', set it from detected Cosmos endpoint
-if ($envVars.ContainsKey('COSMOS_ENDPOINT') -and $envVars['COSMOS_ENDPOINT'] -and ($envVars['COSMOS_ENDPOINT'] -notmatch 'your')) {
-	$cosmosEndpoint = $envVars['COSMOS_ENDPOINT']
-	if (-not $envVars.ContainsKey('AZURE_COSMOS_ENDPOINT') -or $envVars['AZURE_COSMOS_ENDPOINT'] -match 'your') {
-		$envVars['AZURE_COSMOS_ENDPOINT'] = $cosmosEndpoint
-	}
-	if (-not $envVars.ContainsKey('AZURE_COSMOS_DATABASE') -or $envVars['AZURE_COSMOS_DATABASE'] -match 'your') {
-		$envVars['AZURE_COSMOS_DATABASE'] = $envVars['COSMOS_DATABASE_NAME']
-	}
-	if (-not $envVars.ContainsKey('AZURE_COSMOS_HISTORY_CONTAINER') -or $envVars['AZURE_COSMOS_HISTORY_CONTAINER'] -match 'your') {
-		$envVars['AZURE_COSMOS_HISTORY_CONTAINER'] = 'chat_history'
-	}
-	if (-not $envVars.ContainsKey('AZURE_COSMOS_FEEDBACK_CONTAINER') -or $envVars['AZURE_COSMOS_FEEDBACK_CONTAINER'] -match 'your') {
-		$envVars['AZURE_COSMOS_FEEDBACK_CONTAINER'] = 'feedback'
-	}
-	if (-not $envVars.ContainsKey('COSMOS_CHAT_CONTAINER') -or $envVars['COSMOS_CHAT_CONTAINER'] -match 'your') {
-		$envVars['COSMOS_CHAT_CONTAINER'] = 'chat_history'
-	}
-	if (-not $envVars.ContainsKey('COSMOS_CACHE_CONTAINER') -or $envVars['COSMOS_CACHE_CONTAINER'] -match 'your') {
-		$envVars['COSMOS_CACHE_CONTAINER'] = 'cache'
-	}
-	if (-not $envVars.ContainsKey('COSMOS_FEEDBACK_CONTAINER') -or $envVars['COSMOS_FEEDBACK_CONTAINER'] -match 'your') {
-		$envVars['COSMOS_FEEDBACK_CONTAINER'] = 'feedback'
-	}
-	if (-not $envVars.ContainsKey('COSMOS_PROCESSED_FILES_CONTAINER') -or $envVars['COSMOS_PROCESSED_FILES_CONTAINER'] -match 'your') {
-		$envVars['COSMOS_PROCESSED_FILES_CONTAINER'] = 'processed_files'
-	}
-	if (-not $envVars.ContainsKey('COSMOS_PROMPTS_CONTAINER') -or $envVars['COSMOS_PROMPTS_CONTAINER'] -match 'your') {
-		$envVars['COSMOS_PROMPTS_CONTAINER'] = 'prompts'
-	}
-	if (-not $envVars.ContainsKey('COSMOS_SQL_SCHEMA_CONTAINER') -or $envVars['COSMOS_SQL_SCHEMA_CONTAINER'] -match 'your') {
-		$envVars['COSMOS_SQL_SCHEMA_CONTAINER'] = 'sql_schema'
-	}
-	if (-not $envVars.ContainsKey('COSMOS_ACCOUNT_RESOLVER_CONTAINER') -or $envVars['COSMOS_ACCOUNT_RESOLVER_CONTAINER'] -match 'your') {
-		$envVars['COSMOS_ACCOUNT_RESOLVER_CONTAINER'] = 'account_resolver'
-	}
-	if (-not $envVars.ContainsKey('COSMOS_AGENT_FUNCTIONS_CONTAINER') -or $envVars['COSMOS_AGENT_FUNCTIONS_CONTAINER'] -match 'your') {
-		$envVars['COSMOS_AGENT_FUNCTIONS_CONTAINER'] = 'agent_functions'
-	}
-}
-
-# Set Gremlin derived vars
-if ($envVars.ContainsKey('GREMLIN_ENDPOINT') -and $envVars['GREMLIN_ENDPOINT'] -and ($envVars['GREMLIN_ENDPOINT'] -notmatch 'your')) {
-	if (-not $envVars.ContainsKey('AZURE_COSMOS_GREMLIN_ENDPOINT') -or $envVars['AZURE_COSMOS_GREMLIN_ENDPOINT'] -match 'your') {
-		$envVars['AZURE_COSMOS_GREMLIN_ENDPOINT'] = $envVars['GREMLIN_ENDPOINT']
-	}
-	if (-not $envVars.ContainsKey('AZURE_COSMOS_GREMLIN_DATABASE') -or $envVars['AZURE_COSMOS_GREMLIN_DATABASE'] -match 'your') {
-		$envVars['AZURE_COSMOS_GREMLIN_DATABASE'] = 'graphdb'
-	}
-	if (-not $envVars.ContainsKey('AZURE_COSMOS_GREMLIN_GRAPH') -or $envVars['AZURE_COSMOS_GREMLIN_GRAPH'] -match 'your') {
-		$envVars['AZURE_COSMOS_GREMLIN_GRAPH'] = 'relationships'
-	}
-	if (-not $envVars.ContainsKey('AZURE_COSMOS_GREMLIN_PORT') -or $envVars['AZURE_COSMOS_GREMLIN_PORT'] -match 'your') {
-		$envVars['AZURE_COSMOS_GREMLIN_PORT'] = '443'
-	}
 }
 
 # Write merged vars to .env and chatbot/.env
