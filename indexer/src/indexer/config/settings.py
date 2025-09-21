@@ -78,8 +78,7 @@ class GremlinSettings(BaseSettings):
     port: int = Field(alias="AZURE_COSMOS_GREMLIN_PORT")
     database: str = Field(alias="AZURE_COSMOS_GREMLIN_DATABASE")
     graph: str = Field(alias="AZURE_COSMOS_GREMLIN_GRAPH")
-    username: Optional[str] = Field(default=None, alias="AZURE_COSMOS_GREMLIN_USERNAME")
-    password: Optional[str] = Field(default=None, alias="AZURE_COSMOS_GREMLIN_PASSWORD")
+    # Authentication must use DefaultAzureCredential / Managed Identity. Do not use username/password in config.
     
     class Config:
         env_file = "../.env"

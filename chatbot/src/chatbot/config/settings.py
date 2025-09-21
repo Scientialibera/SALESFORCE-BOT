@@ -56,8 +56,8 @@ class GremlinSettings(BaseSettings):
     """Gremlin graph database configuration."""
     
     endpoint: str = Field(alias="AZURE_COSMOS_GREMLIN_ENDPOINT", description="Gremlin endpoint")
-    database_name: str = Field(alias="AZURE_COSMOS_GREMLIN_DATABASE", description="Graph database name")
-    graph_name: str = Field(alias="AZURE_COSMOS_GREMLIN_GRAPH", description="Graph container name")
+    database_name: str = Field(default="graphdb", alias="AZURE_COSMOS_GREMLIN_DATABASE", description="Graph database name")
+    graph_name: str = Field(default="account_graph", alias="AZURE_COSMOS_GREMLIN_GRAPH", description="Graph container name")
     max_concurrent_connections: int = Field(default=10, description="Max concurrent connections")
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")
     

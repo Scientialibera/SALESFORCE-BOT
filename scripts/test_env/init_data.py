@@ -13,14 +13,11 @@ import os
 from pathlib import Path
 from typing import Dict, List, Any
 import shutil
-try:
-    # Management SDKs for RBAC-based provisioning
-    from azure.identity import DefaultAzureCredential as MgmtDefaultAzureCredential
-    from azure.mgmt.cosmosdb import CosmosDBManagementClient
-    from azure.mgmt.resource import SubscriptionClient
-    MGMT_SDK_AVAILABLE = True
-except Exception:
-    MGMT_SDK_AVAILABLE = False
+# This initializer will use the `az` CLI exclusively for resource provisioning.
+# Do NOT attempt to use management SDKs or any key-based fallbacks. The
+# environment must have Azure CLI installed and the user must be authenticated
+# (e.g. `az login`) with a principal that has permission to create Cosmos DB
+# resources in the target subscription/resource group.
 
 # Add the src directory to Python path
 current_dir = Path(__file__).parent
@@ -81,6 +78,16 @@ from chatbot.clients.cosmos_client import CosmosDBClient
 from chatbot.clients.gremlin_client import GremlinClient
 from gremlin_python.driver.protocol import GremlinServerError
 from tenacity import RetryError
+import subprocess
+import platform
+import json
+import time
+
+# Asset paths used by the uploader logic (previously in upload_artifacts.py)
+ASSETS_PROMPTS = project_root / 'scripts' / 'assets' / 'prompts'
+ASSETS_FUNCTIONS = project_root / 'scripts' / 'assets' / 'functions'
+ASSETS_FUNCTIONS_TOOLS = ASSETS_FUNCTIONS / 'tools'
+ASSETS_FUNCTIONS_AGENTS = ASSETS_FUNCTIONS / 'agents'
 
 
 class DataInitializer:
@@ -103,12 +110,12 @@ class DataInitializer:
             # CONTAINER_APP_RESOURCE_GROUP env var is set and the caller has
             # sufficient rights.
             await self.ensure_gremlin_graph()
-
-            # Initialize prompts
-            await self.upload_prompts()
-            
-            # Initialize function definitions
-            await self.upload_functions()
+            # Initialize prompts/functions/agents using the uploader helper
+            # This will provision required Cosmos DB database/containers via the
+            # Azure CLI (AAD) and upload prompts and function/agent definitions
+            # from `scripts/assets` in the repository. If the uploader helper is
+            # unavailable we fall back to the local upload implementations.
+            await self.upload_artifacts()
             
             # Initialize dummy graph data
             await self.upload_dummy_graph_data()
@@ -129,12 +136,16 @@ class DataInitializer:
         """Upload system prompts to Cosmos DB."""
         print("📝 Uploading system prompts...")
         
-        # Load prompts from prompts/ folder
+        # Load prompts from prompts/ folder. Fallback to repository assets if present.
         prompts_dir = Path(__file__).parent / "prompts"
-        
         if not prompts_dir.exists():
-            print("⚠️  Prompts directory not found, skipping prompt upload")
-            return
+            # fallback to scripts/assets/prompts
+            alt = project_root / "scripts" / "assets" / "prompts"
+            if alt.exists():
+                prompts_dir = alt
+            else:
+                print("⚠️  Prompts directory not found, skipping prompt upload")
+                return
         
         for prompt_file in prompts_dir.glob("*.json"):
             try:
@@ -156,12 +167,15 @@ class DataInitializer:
         """Upload function definitions to Cosmos DB."""
         print("🔧 Uploading function definitions...")
         
-        # Load functions from functions/ folder
+        # Load functions from functions/ folder. Fallback to repository assets if present.
         functions_dir = Path(__file__).parent / "functions"
-        
         if not functions_dir.exists():
-            print("⚠️  Functions directory not found, skipping function upload")
-            return
+            alt = project_root / "scripts" / "assets" / "functions"
+            if alt.exists():
+                functions_dir = alt
+            else:
+                print("⚠️  Functions directory not found, skipping function upload")
+                return
         
         for function_file in functions_dir.glob("*.json"):
             try:
@@ -178,6 +192,214 @@ class DataInitializer:
                 
             except Exception as e:
                 print(f"  ❌ Failed to upload {function_file.name}: {e}")
+
+    async def upload_artifacts(self):
+        """Use the repository uploader script to provision Cosmos and upload artifacts.
+
+        Consolidated uploader: previously this delegated to
+        `scripts/test_env/upload_artifacts.py`. That module has been removed
+        and its provisioning/upload logic is embedded here to ensure a single
+        entrypoint and remove duplication.
+        """
+        print("🔁 Uploading prompts and functions via repository uploader...")
+        # Build the list of containers to ensure
+        containers = [
+            settings.cosmos_db.chat_container,
+            settings.cosmos_db.cache_container,
+            settings.cosmos_db.prompts_container,
+            settings.cosmos_db.agent_functions_container,
+            settings.cosmos_db.sql_schema_container,
+            settings.cosmos_db.contracts_text_container,
+            settings.cosmos_db.processed_files_container,
+            settings.cosmos_db.account_resolver_container,
+            settings.cosmos_db.feedback_container,
+        ]
+
+        # Provision Cosmos resources using az CLI (best-effort)
+        try:
+            self._provision_cosmos_via_az(settings.cosmos_db.endpoint, settings.cosmos_db.database_name, containers)
+        except Exception as e:
+            print(f"  ⚠️ Provisioning step failed or skipped: {e}")
+
+        # Run uploader logic: upload prompts and functions from scripts/assets
+        try:
+            # instantiate repo classes
+            from chatbot.repositories.prompts_repository import PromptsRepository
+            from chatbot.repositories.agent_functions_repository import AgentFunctionsRepository
+
+            prompts_repo = PromptsRepository(self.cosmos_client, settings.cosmos_db.database_name, settings.cosmos_db.prompts_container)
+            functions_repo = AgentFunctionsRepository(self.cosmos_client, settings.cosmos_db.database_name, settings.cosmos_db.agent_functions_container)
+
+            await self._uploader_upload_prompts(prompts_repo)
+            await self._uploader_upload_functions(functions_repo)
+            print("  ✓ Uploader completed prompts and functions upload.")
+            return
+        except Exception as e:
+            print(f"  ⚠️ Uploader failed during upload steps: {e}")
+            print("  → Falling back to built-in upload implementations.")
+
+        # Fallback behavior — should rarely be needed now
+        await self.upload_prompts()
+        await self.upload_functions()
+
+    def _provision_cosmos_via_az(self, endpoint: str, database: str, containers: list, resource_group: str | None = None):
+        """Best-effort: use Azure CLI to create database and containers using AAD credentials.
+
+        This mirrors the behavior previously implemented in
+        `scripts/test_env/upload_artifacts.py`. It requires `az` in PATH and an
+        authenticated principal. It will print actionable errors if CLI is
+        missing or permissions are insufficient.
+        """
+        # endpoint looks like https://<account>.documents.azure.com
+        try:
+            account = endpoint.replace('https://', '').split('.')[0]
+        except Exception:
+            print('Could not parse Cosmos account name from endpoint', endpoint)
+            return
+
+        rg = resource_group or os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')
+        if not rg:
+            # try to discover via az
+            try:
+                res = subprocess.run(['az','resource','list','--resource-type','Microsoft.DocumentDB/databaseAccounts','--query','[?contains(name, `'+account+'`)]','-o','json'], capture_output=True, text=True, check=False)
+                if res.returncode == 0 and res.stdout:
+                    data = json.loads(res.stdout)
+                    if isinstance(data, list) and len(data) > 0:
+                        rg = data[0].get('resourceGroup')
+            except Exception:
+                rg = None
+
+        if not rg:
+            print('Could not detect resource group for Cosmos account', account, '— skipping az provisioning. Provide CONTAINER_APP_RESOURCE_GROUP to enable provisioning.')
+            return
+
+        if not shutil.which('az'):
+            print("ERROR: Azure CLI ('az') was not found in PATH. Skipping provisioning.")
+            return
+
+        az_exe = shutil.which('az')
+
+        def run_az(cmd: List[str], timeout: int = 30):
+            cmd0 = list(cmd)
+            cmd0[0] = az_exe
+            try:
+                res = subprocess.run(cmd0, check=False, capture_output=True, text=True, timeout=timeout)
+                return res.returncode, res.stdout, res.stderr
+            except subprocess.TimeoutExpired as e:
+                return -1, '', f'Timeout after {timeout}s: {e}'
+
+        # Ensure database exists
+        rc, out, err = run_az([az_exe, 'cosmosdb', 'sql', 'database', 'show', '--account-name', account, '--resource-group', rg, '--name', database], timeout=20)
+        if rc == 0:
+            print(f"  ✓ Cosmos SQL database '{database}' already exists.")
+        else:
+            print(f"  ➤ Creating Cosmos SQL database '{database}' (account={account}, rg={rg})")
+            rc, out, err = run_az([az_exe, 'cosmosdb', 'sql', 'database', 'create', '--account-name', account, '--resource-group', rg, '--name', database], timeout=60)
+            if rc != 0:
+                print(f"    ERROR creating database: rc={rc}\nstdout={out}\nstderr={err}")
+            else:
+                print(f"    ✓ Created database '{database}'.")
+
+        # Ensure containers
+        for c in containers:
+            if not c:
+                continue
+            print(f"  ➤ Ensuring container '{c}' in DB '{database}'...")
+            rc, out, err = run_az([az_exe, 'cosmosdb', 'sql', 'container', 'show', '--account-name', account, '--resource-group', rg, '--database-name', database, '--name', c], timeout=20)
+            if rc == 0:
+                print(f"    ✓ Cosmos container '{c}' already exists in DB '{database}'.")
+                continue
+            print(f"    ➤ Creating Cosmos container '{c}' in DB '{database}'")
+            rc, out, err = run_az([az_exe, 'cosmosdb', 'sql', 'container', 'create', '--account-name', account, '--resource-group', rg, '--database-name', database, '--name', c, '--partition-key-path', '/id', '--throughput', '400'], timeout=60)
+            if rc != 0:
+                print(f"      ERROR creating container '{c}': rc={rc}\nstdout={out}\nstderr={err}")
+            else:
+                print(f"      ✓ Created container '{c}'.")
+
+    async def _uploader_upload_prompts(self, prompts_repo):
+        """Upload prompts from `scripts/assets/prompts` (mirror of upload_artifacts.upload_prompts)."""
+        print('Uploading prompts from assets...')
+        if not ASSETS_PROMPTS.exists():
+            print('  ⚠️ No prompts assets directory found at', ASSETS_PROMPTS)
+            return
+        for fname in os.listdir(ASSETS_PROMPTS):
+            if not str(fname).endswith('.md') and not str(fname).endswith('.json'):
+                continue
+            path = ASSETS_PROMPTS / fname
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                # If JSON, parse and upload as object; if MD, upload as system prompt
+                if fname.endswith('.json'):
+                    data = json.loads(content)
+                    await prompts_repo.delete_prompt(data.get('id', ''))
+                    await prompts_repo.save_prompt(prompt_id=data.get('id'), agent_name=data.get('agent_name') or data.get('id'), prompt_type=data.get('type') or 'system', content=json.dumps(data))
+                    print('  ✓ Uploaded prompt (json):', fname)
+                else:
+                    agent_name = Path(fname).stem
+                    prompt_id = f'prompt_{agent_name}'
+                    try:
+                        await prompts_repo.delete_prompt(prompt_id)
+                    except Exception:
+                        pass
+                    await prompts_repo.save_prompt(prompt_id=prompt_id, agent_name=agent_name, prompt_type='system', content=content)
+                    print('  ✓ Uploaded prompt (md):', fname)
+            except Exception as e:
+                print('  ❌ Failed to upload prompt', fname, 'error:', e)
+
+    async def _uploader_upload_functions(self, functions_repo):
+        """Upload function/tool/agent definitions from `scripts/assets/functions`."""
+        print('Uploading function definitions from assets...')
+        # Tools
+        if ASSETS_FUNCTIONS_TOOLS.exists():
+            for fname in os.listdir(ASSETS_FUNCTIONS_TOOLS):
+                if not str(fname).endswith('.json'):
+                    continue
+                path = ASSETS_FUNCTIONS_TOOLS / fname
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    for func in data.get('functions', []):
+                        name = func.get('name')
+                        try:
+                            from chatbot.models.result import ToolDefinition
+                            td = ToolDefinition(name=name, description=func.get('description', ''), parameters=func.get('parameters', {}), metadata=func.get('metadata', {}))
+                            try:
+                                await functions_repo.delete_function_definition(name)
+                            except Exception:
+                                pass
+                            agents = func.get('agents') or func.get('metadata', {}).get('agents') or ['sql_agent', 'graph_agent']
+                            await functions_repo.save_function_definition(td, agents=agents)
+                            print('  ✓ Uploaded tool function', name, 'agents=', agents)
+                        except Exception as e:
+                            print('  ❌ Failed to upload tool function', name, 'error:', e)
+                except Exception as e:
+                    print('  ❌ Failed to read tools file', fname, 'error:', e)
+
+        # Agents
+        if ASSETS_FUNCTIONS_AGENTS.exists():
+            for fname in os.listdir(ASSETS_FUNCTIONS_AGENTS):
+                if not str(fname).endswith('.json'):
+                    continue
+                path = ASSETS_FUNCTIONS_AGENTS / fname
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    agent_id = data.get('id') or data.get('name')
+                    agents_list = data.get('agents') or [data.get('name')]
+                    try:
+                        from chatbot.models.result import ToolDefinition
+                        td = ToolDefinition(name=agent_id, description=data.get('description', ''), parameters=data.get('parameters', {}), metadata=data.get('metadata', {}))
+                        try:
+                            await functions_repo.delete_function_definition(agent_id)
+                        except Exception:
+                            pass
+                        await functions_repo.save_function_definition(td, agents=agents_list)
+                        print('  ✓ Uploaded agent registration', agent_id, 'agents=', agents_list)
+                    except Exception as e:
+                        print('  ❌ Failed to upload agent registration', agent_id, 'error:', e)
+                except Exception as e:
+                    print('  ❌ Failed to read agents file', fname, 'error:', e)
     
     async def upload_dummy_graph_data(self):
         """Upload dummy account and relationship data to Gremlin graph."""
@@ -200,7 +422,8 @@ class DataInitializer:
             if "DefaultAzureCredential failed" in msg or "Unable to get authority configuration" in msg or 'credential' in msg.lower():
                 print("⚠️  Gremlin authentication failed (DefaultAzureCredential). Skipping graph upload.")
                 print("   -> Ensure you're logged in (az login) or running with a managed identity that has data-plane access to Cosmos DB.")
-                print("   -> If you need to use key auth temporarily for local debugging set AZURE_COSMOS_GREMLIN_PASSWORD in your .env (not recommended for normal usage).")
+                # The project enforces AAD-based auth (DefaultAzureCredential / Managed Identity).
+                # Do NOT enable or rely on key-based credentials. Remove any AZURE_COSMOS_GREMLIN_PASSWORD or other secrets from your .env.
                 return
             if "NotFound" in msg or "404" in msg:
                 print("⚠️  Gremlin graph or collection not found. Skipping graph upload.")
@@ -373,76 +596,125 @@ class DataInitializer:
         We create the chat history container here so init_data can be used to
         fully prepare a dev environment.
         """
-        try:
-            rg = os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')
-            if not rg:
-                print("⚠️  CONTAINER_APP_RESOURCE_GROUP not set in environment; skipping Cosmos container provisioning.")
-                return
-
-            cos_end = settings.cosmos_db.endpoint
-            if not cos_end:
-                print("⚠️  COSMOS_ENDPOINT not configured in settings; skipping container creation.")
-                return
-
-            # Extract account name from endpoint (https://{account}.documents.azure.com)
-            acct = cos_end.replace('https://', '').split('.')[0]
-            db_name = settings.cosmos_db.database_name
-            chat_container = settings.cosmos_db.chat_container
-
-            if not acct or not db_name or not chat_container:
-                print("⚠️  Insufficient Cosmos settings to create container; skipping.")
-                return
-
-            print(f"🔧 Attempting to create Cosmos container '{chat_container}' in DB '{db_name}' on account '{acct}' (rg: {rg}) using RBAC via management SDK")
-
-            if not MGMT_SDK_AVAILABLE:
-                print("  ❌ Azure management SDKs not installed (azure-mgmt-cosmosdb / azure-mgmt-resource).\n     Install them or pre-create the container manually. Skipping provisioning.")
-                return
-
-            # Use DefaultAzureCredential for RBAC
-            try:
-                cred = MgmtDefaultAzureCredential()
-                sub_client = SubscriptionClient(cred)
-                subs = list(sub_client.subscriptions.list())
-                if not subs:
-                    print("  ❌ No subscriptions found for the current principal. Ensure you're logged in with 'az login' or running with a managed identity that has a subscription.")
-                    return
-                # Prefer provided subscription id from env if present
-                subscription_id = os.environ.get('CONTAINER_APP_SUBSCRIPTION_ID') or subs[0].subscription_id
-
-                mgmt = CosmosDBManagementClient(cred, subscription_id)
-
-                # Ensure database exists
-                try:
-                    mgmt.cassandra_resources.get_keyspace(rg, acct, db_name)
-                except Exception:
-                    # Cosmos management SDK has different resource calls; use Databases -> Gremlin/Cosmos SQL DB APIs
-                    pass
-
-                # Create or update SQL container (using the SQL API through management client)
-                try:
-                    params = {
-                        'resource': {
-                            'id': chat_container,
-                            'partitionKey': {'paths': ['/id'], 'kind': 'Hash'},
-                        },
-                        'options': {'throughput': 400}
-                    }
-                    mgmt.sql_resources.create_update_sql_container(rg, acct, db_name, chat_container, params)
-                    print(f"  ✓ Container '{chat_container}' created or already exists (via management SDK).")
-                except Exception as ex:
-                    print(f"  ⚠️ Management SDK returned an error while creating container: {ex}")
-                    print("  ⚠️ Ensure your principal has Cosmos DB Contributor or appropriate management role. You can also pre-create the container manually.")
-
-            except Exception as e:
-                print(f"  ❌ Error while attempting RBAC provisioning for Cosmos container: {e}")
-                print("   -> Ensure you're authenticated (az login) or running in an environment with a managed identity that has subscription access.")
-                return
-
-        except Exception as e:
-            print(f"  ❌ Error while attempting to create Cosmos container: {e}")
-            # Do not raise; init should continue even if provisioning fails
+        rg = os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')
+        if not rg:
+            print("⚠️  CONTAINER_APP_RESOURCE_GROUP not set in environment; skipping Cosmos container provisioning.")
             return
+
+        cos_end = settings.cosmos_db.endpoint
+        if not cos_end:
+            print("⚠️  COSMOS_ENDPOINT not configured in settings; skipping container creation.")
+            return
+
+        # Extract account name from endpoint (https://{account}.documents.azure.com)
+        acct = cos_end.replace('https://', '').split('.')[0]
+        db_name = settings.cosmos_db.database_name
+        # Gather all container names defined in settings.cosmos_db that end with '_container'
+        container_fields = [
+            'chat_container', 'cache_container', 'feedback_container', 'agent_functions_container',
+            'prompts_container', 'sql_schema_container', 'contracts_text_container', 'processed_files_container',
+            'account_resolver_container'
+        ]
+        containers = []
+        for f in container_fields:
+            val = getattr(settings.cosmos_db, f, None)
+            if val:
+                containers.append(val)
+
+        if not acct or not db_name or not containers:
+            print("⚠️  Insufficient Cosmos settings to create container; skipping.")
+            return
+
+        print(f"🔧 Ensuring Cosmos containers exist in DB '{db_name}' on account '{acct}' (rg: {rg}) using Azure CLI (required)")
+
+        import subprocess
+        import shutil
+
+        if not shutil.which("az"):
+            print("\nERROR: Azure CLI ('az') was not found in PATH. This initializer requires the Azure CLI for provisioning and will not attempt any SDK or key-based fallbacks.")
+            print("Please install Azure CLI: https://learn.microsoft.com/cli/azure/install-azure-cli and then authenticate with an account that has permissions to create Cosmos resources:")
+            print("  1) Open a terminal and run: az login")
+            print("  2) Optionally set the subscription: az account set --subscription <SUBSCRIPTION_ID>")
+            print("  3) Re-run this script: python ./scripts/test_env/init_data.py\n")
+            # Exit cleanly with non-zero status so CI/automation can detect failure without a stacktrace
+            sys.exit(2)
+
+        az_exe = shutil.which("az")
+        if not az_exe:
+            print("\nERROR: Azure CLI ('az') was not found in PATH. This initializer requires the Azure CLI for provisioning and will not attempt any SDK or key-based fallbacks.")
+            print("Please install Azure CLI: https://learn.microsoft.com/cli/azure/install-azure-cli and then authenticate with an account that has permissions to create Cosmos resources:")
+            print("  1) Open a terminal and run: az login")
+            print("  2) Optionally set the subscription: az account set --subscription <SUBSCRIPTION_ID>")
+            print("  3) Re-run this script: python ./scripts/test_env/init_data.py\n")
+            sys.exit(2)
+
+        def run_az_command(cmd: List[str], timeout: int = 30):
+            """Run az command using absolute az executable, return (rc, stdout, stderr).
+
+            We use a small timeout to avoid hangs; caller should handle non-zero rc.
+            """
+            cmd0 = list(cmd)
+            cmd0[0] = az_exe
+            try:
+                res = subprocess.run(cmd0, check=False, capture_output=True, text=True, timeout=timeout)
+                return res.returncode, res.stdout, res.stderr
+            except subprocess.TimeoutExpired as e:
+                return -1, "", f"Timeout after {timeout}s: {e}"
+
+        # Check if database exists first
+        show_db_cmd = [
+            "az", "cosmosdb", "sql", "database", "show",
+            "--account-name", acct,
+            "--resource-group", rg,
+            "--name", db_name,
+        ]
+        rc, out, err = run_az_command(show_db_cmd, timeout=20)
+        if rc == 0:
+            print(f"  ✓ Cosmos SQL database '{db_name}' already exists.")
+        else:
+            print(f"  ➤ Creating Cosmos SQL database '{db_name}' (account={acct}, rg={rg})")
+            create_db_cmd = [
+                "az", "cosmosdb", "sql", "database", "create",
+                "--account-name", acct,
+                "--resource-group", rg,
+                "--name", db_name,
+            ]
+            rc, out, err = run_az_command(create_db_cmd, timeout=60)
+            if rc != 0:
+                print(f"    ERROR creating database: rc={rc}\nstdout={out}\nstderr={err}")
+            else:
+                print(f"    ✓ Created database '{db_name}'.")
+
+        # Iterate through configured containers and ensure each exists
+        for container_name in containers:
+            print(f"  ➤ Ensuring container '{container_name}' in DB '{db_name}'...")
+            show_cont_cmd = [
+                "az", "cosmosdb", "sql", "container", "show",
+                "--account-name", acct,
+                "--resource-group", rg,
+                "--database-name", db_name,
+                "--name", container_name,
+            ]
+            rc, out, err = run_az_command(show_cont_cmd, timeout=20)
+            if rc == 0:
+                print(f"    ✓ Cosmos container '{container_name}' already exists in DB '{db_name}'.")
+                continue
+
+            print(f"    ➤ Creating Cosmos container '{container_name}' in DB '{db_name}'")
+            create_cont_cmd = [
+                "az", "cosmosdb", "sql", "container", "create",
+                "--account-name", acct,
+                "--resource-group", rg,
+                "--database-name", db_name,
+                "--name", container_name,
+                "--partition-key-path", "/id",
+                "--throughput", "400",
+            ]
+            rc, out, err = run_az_command(create_cont_cmd, timeout=60)
+            if rc != 0:
+                print(f"      ERROR creating container '{container_name}': rc={rc}\nstdout={out}\nstderr={err}")
+            else:
+                print(f"      ✓ Created container '{container_name}'.")
 
     async def ensure_gremlin_graph(self):
         """Best-effort creation of Gremlin database and graph using az CLI.
@@ -451,83 +723,159 @@ class DataInitializer:
         quietly continue if the environment lacks the resource group var or
         if the az CLI call fails due to permissions.
         """
-        try:
-            rg = os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')
-            if not rg:
-                print("⚠️  CONTAINER_APP_RESOURCE_GROUP not set in environment; skipping Gremlin provisioning.")
-                return
-
-            gremlin_endpoint = os.environ.get('AZURE_COSMOS_GREMLIN_ENDPOINT') or settings.gremlin.endpoint
-            gremlin_db = os.environ.get('AZURE_COSMOS_GREMLIN_DATABASE') or settings.gremlin.database
-            gremlin_graph = os.environ.get('AZURE_COSMOS_GREMLIN_GRAPH') or settings.gremlin.graph
-
-            if not gremlin_endpoint or not gremlin_db or not gremlin_graph:
-                print("⚠️  Insufficient Gremlin settings to create graph; skipping.")
-                return
-
-            # Extract account name from endpoint
-            acct = gremlin_endpoint.replace('https://', '').split('.')[0]
-
-            print(f"🔧 Attempting to create Gremlin database '{gremlin_db}' and graph '{gremlin_graph}' on account '{acct}' (rg: {rg}) using RBAC via management SDK")
-
-            if not MGMT_SDK_AVAILABLE:
-                print("  ❌ Azure management SDKs not installed (azure-mgmt-cosmosdb / azure-mgmt-resource).\n     Install them or pre-create the Gremlin graph manually. Skipping provisioning.")
-                return
-
-            try:
-                cred = MgmtDefaultAzureCredential()
-                sub_client = SubscriptionClient(cred)
-                subs = list(sub_client.subscriptions.list())
-                if not subs:
-                    print("  ❌ No subscriptions found for the current principal. Ensure you're logged in with 'az login' or running with a managed identity that has a subscription.")
-                    return
-                subscription_id = os.environ.get('CONTAINER_APP_SUBSCRIPTION_ID') or subs[0].subscription_id
-
-                mgmt = CosmosDBManagementClient(cred, subscription_id)
-
-                # Create Gremlin database
-                try:
-                    mgmt.gremlin_resources.create_update_gremlin_database(rg, acct, gremlin_db, {'resource': {'id': gremlin_db}})
-                    print(f"  ✓ Gremlin database '{gremlin_db}' created or already exists (via management SDK).")
-                except Exception as ex:
-                    print(f"  ⚠️ Management SDK returned an error while creating gremlin database: {ex}")
-
-                # Create Gremlin graph
-                try:
-                    params = {
-                        'resource': {
-                            'id': gremlin_graph,
-                            'partitionKey': {'paths': ['/partitionKey'], 'kind': 'Hash'}
-                        },
-                        'options': {'throughput': 400}
-                    }
-                    mgmt.gremlin_resources.create_update_gremlin_graph(rg, acct, gremlin_db, gremlin_graph, params)
-                    print(f"  ✓ Gremlin graph '{gremlin_graph}' created or already exists (via management SDK).")
-                except Exception as ex:
-                    print(f"  ⚠️ Management SDK returned an error while creating gremlin graph: {ex}")
-                    print("  ⚠️ Ensure your principal has Cosmos DB Contributor or appropriate management role. You can also pre-create the graph manually.")
-
-                # Poll briefly to allow the graph to become available
-                import time
-                for i in range(6):
-                    try:
-                        # A tiny probe using the Gremlin client
-                        await self.gremlin_client.execute_query('g.V().limit(1)')
-                        print("  ✓ Gremlin graph is available.")
-                        return
-                    except Exception:
-                        time.sleep(2)
-                print("  ⚠️ Gremlin graph did not become available after provisioning attempt. It may still be initializing.")
-
-            except Exception as e:
-                print(f"  ❌ Error while attempting RBAC provisioning for Gremlin graph: {e}")
-                print("   -> Ensure you're authenticated (az login) or running in an environment with a managed identity that has subscription access.")
-                return
-
-        except Exception as e:
-            print(f"  ❌ Error while attempting to create Gremlin graph: {e}")
-            # Do not raise; init should continue even if provisioning fails
+        rg = os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')
+        if not rg:
+            print("⚠️  CONTAINER_APP_RESOURCE_GROUP not set in environment; skipping Gremlin provisioning.")
             return
+
+        gremlin_endpoint = os.environ.get('AZURE_COSMOS_GREMLIN_ENDPOINT') or settings.gremlin.endpoint
+        gremlin_db = os.environ.get('AZURE_COSMOS_GREMLIN_DATABASE') or getattr(settings.gremlin, 'database', None) or getattr(settings.gremlin, 'database_name', None)
+        gremlin_graph = os.environ.get('AZURE_COSMOS_GREMLIN_GRAPH') or getattr(settings.gremlin, 'graph', None) or getattr(settings.gremlin, 'graph_name', None)
+
+        # If the configured graph name is the legacy or incorrect 'relationships',
+        # prefer the known graph/container name 'account_graph' and prefer the
+        # Gremlin database named 'graphdb' which is used in our deployments.
+        if gremlin_graph and gremlin_graph.lower().startswith('relationship'):
+            print(f"  ⚠️ Found legacy Gremlin graph name '{gremlin_graph}'; preferring 'account_graph' as the graph name.")
+            gremlin_graph = 'account_graph'
+
+        if not gremlin_endpoint or not gremlin_db or not gremlin_graph:
+            print("⚠️  Insufficient Gremlin settings to create graph; skipping.")
+            return
+
+        # Extract account name from endpoint
+        acct = gremlin_endpoint.replace('https://', '').split('.')[0]
+
+        print(f"🔧 Creating Gremlin database '{gremlin_db}' and graph '{gremlin_graph}' on account '{acct}' (rg: {rg}) using Azure CLI (required)")
+
+        import subprocess
+        import shutil
+
+        if not shutil.which("az"):
+            print("\nERROR: Azure CLI ('az') was not found in PATH. This initializer requires the Azure CLI for provisioning and will not attempt any SDK or key-based fallbacks.")
+            print("Please install Azure CLI: https://learn.microsoft.com/cli/azure/install-azure-cli and then authenticate with an account that has permissions to create Cosmos resources:")
+            print("  1) Open a terminal and run: az login")
+            print("  2) Optionally set the subscription: az account set --subscription <SUBSCRIPTION_ID>")
+            print("  3) Re-run this script: python ./scripts/test_env/init_data.py\n")
+            sys.exit(2)
+
+        az_exe = shutil.which("az")
+        if not az_exe:
+            print("\nERROR: Azure CLI ('az') was not found in PATH. This initializer requires the Azure CLI for provisioning and will not attempt any SDK or key-based fallbacks.")
+            print("Please install Azure CLI: https://learn.microsoft.com/cli/azure/install-azure-cli and then authenticate with an account that has permissions to create Cosmos resources:")
+            print("  1) Open a terminal and run: az login")
+            print("  2) Optionally set the subscription: az account set --subscription <SUBSCRIPTION_ID>")
+            print("  3) Re-run this script: python ./scripts/test_env/init_data.py\n")
+            sys.exit(2)
+
+        def run_az_command(cmd: List[str], timeout: int = 30):
+            cmd0 = list(cmd)
+            cmd0[0] = az_exe
+            try:
+                res = subprocess.run(cmd0, check=False, capture_output=True, text=True, timeout=timeout)
+                return res.returncode, res.stdout, res.stderr
+            except subprocess.TimeoutExpired as e:
+                return -1, "", f"Timeout after {timeout}s: {e}"
+
+        # Check if gremlin database exists (use gremlin subcommand)
+        show_db_cmd = [
+            "az", "cosmosdb", "gremlin", "database", "show",
+            "--account-name", acct,
+            "--resource-group", rg,
+            "--name", gremlin_db,
+        ]
+        rc, out, err = run_az_command(show_db_cmd, timeout=20)
+        if rc == 0:
+            print(f"  ✓ Gremlin database '{gremlin_db}' already exists.")
+        else:
+            print(f"  ➤ Creating Gremlin database '{gremlin_db}' (account={acct}, rg={rg})")
+            create_db_cmd = [
+                "az", "cosmosdb", "gremlin", "database", "create",
+                "--account-name", acct,
+                "--resource-group", rg,
+                "--name", gremlin_db,
+            ]
+            rc, out, err = run_az_command(create_db_cmd, timeout=60)
+            if rc != 0:
+                print(f"    ERROR creating gremlin database: rc={rc}\nstdout={out}\nstderr={err}")
+            else:
+                print(f"    ✓ Created gremlin database '{gremlin_db}'.")
+
+        # Check if graph exists
+        show_graph_cmd = [
+            "az", "cosmosdb", "gremlin", "graph", "show",
+            "--account-name", acct,
+            "--resource-group", rg,
+            "--database-name", gremlin_db,
+            "--name", gremlin_graph,
+        ]
+        rc, out, err = run_az_command(show_graph_cmd, timeout=20)
+        if rc == 0:
+            print(f"  ✓ Gremlin graph '{gremlin_graph}' already exists in DB '{gremlin_db}'.")
+        else:
+            # The configured graph was not found. Try a small set of sensible
+            # existing names to handle common naming mismatches (e.g. using
+            # `account_graph` instead of `relationships`). This is conservative
+            # and only tries explicit alternatives rather than broad heuristics.
+            print(f"  ⚠️ Gremlin graph '{gremlin_graph}' not found in DB '{gremlin_db}' (rc={rc}). Checking common alternatives...")
+            tried = []
+            # Try common alternative database/graph name pairs. We prefer
+            # ('graphdb', 'account_graph') because our infra uses `graphdb`
+            # as the Gremlin database and `account_graph` as the graph/collection.
+            alternatives = [
+                (gremlin_db, 'account_graph'),
+                ('graphdb', 'account_graph'),
+                ('account_graph', gremlin_graph),
+                ('account_graph', 'account_graph'),
+            ]
+            found = False
+            for alt_db, alt_graph in alternatives:
+                if (alt_db, alt_graph) in tried:
+                    continue
+                tried.append((alt_db, alt_graph))
+                alt_show = [
+                    "az", "cosmosdb", "gremlin", "graph", "show",
+                    "--account-name", acct,
+                    "--resource-group", rg,
+                    "--database-name", alt_db,
+                    "--name", alt_graph,
+                ]
+                rc2, out2, err2 = run_az_command(alt_show, timeout=20)
+                if rc2 == 0:
+                    print(f"    ✓ Found existing Gremlin graph '{alt_graph}' in DB '{alt_db}'. Using that.")
+                    # adopt the alternative names for the rest of the run
+                    gremlin_db = alt_db
+                    gremlin_graph = alt_graph
+                    found = True
+                    break
+
+            if not found:
+                print("    No common alternative Gremlin graph found. Attempting to create the configured graph.")
+                create_graph_cmd = [
+                    "az", "cosmosdb", "gremlin", "graph", "create",
+                    "--account-name", acct,
+                    "--resource-group", rg,
+                    "--database-name", gremlin_db,
+                    "--name", gremlin_graph,
+                    "--throughput", "400",
+                ]
+                rc, out, err = run_az_command(create_graph_cmd, timeout=60)
+                if rc != 0:
+                    print(f"    ERROR creating gremlin graph: rc={rc}\nstdout={out}\nstderr={err}")
+                else:
+                    print(f"    ✓ Created gremlin graph '{gremlin_graph}'.")
+
+        # After creation, poll briefly for availability via a small Gremlin probe
+        import time
+        for i in range(6):
+            try:
+                await self.gremlin_client.execute_query('g.V().limit(1)')
+                print("  ✓ Gremlin graph is available.")
+                return
+            except Exception:
+                time.sleep(2)
+
+        print("  ⚠️ Gremlin graph did not become available after provisioning attempt. It may still be initializing or permissions prevent data-plane access.")
 
 
 async def main():
