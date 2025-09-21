@@ -3,6 +3,14 @@ param(
 	[string]$ResourceGroup
 )
 
+# Resolve repository root up-front so env files are read/written from the repo root
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$repoRoot = Resolve-Path (Join-Path -Path $scriptDir -ChildPath "..\..")
+
+# Paths to env files in the repository root
+$envPath = Join-Path -Path $repoRoot -ChildPath ".env"
+$examplePath = Join-Path -Path $repoRoot -ChildPath ".env.example"
+
 # This script merges `.env.example` into `.env` and performs best-effort Azure discovery
 # when a resource group is supplied. Discovery requires the Azure CLI (`az`) and an
 # authenticated principal. Management/provisioning operations are executed via AAD/az and
@@ -85,8 +93,7 @@ function Write-EnvFile {
 }
 
 # Merge .env.example into .env, preserving existing values and adding missing ones
-$envPath = Join-Path -Path (Get-Location) -ChildPath ".env"
-$examplePath = Join-Path -Path (Get-Location) -ChildPath ".env.example"
+# (env path variables resolved at top of script to repository root)
 
 # Check for BOM in existing .env file
 if (Test-EnvFileBOM -path $envPath) {
@@ -314,7 +321,11 @@ if ($ResourceGroup) {
 	}
 }
 
-# Write merged vars to .env and chatbot/.env
+############################################################
+# Persist resource info and write .env files at repo root
+############################################################
+
+# If we have a resource group, persist it and attempt to discover subscription/tenant
 if ($ResourceGroup) {
 	if (-not $envVars.ContainsKey('CONTAINER_APP_RESOURCE_GROUP') -or $envVars['CONTAINER_APP_RESOURCE_GROUP'] -match 'your') {
 		$envVars['CONTAINER_APP_RESOURCE_GROUP'] = $ResourceGroup
@@ -339,25 +350,49 @@ if ($ResourceGroup) {
 	} catch { Write-Warning "Could not detect subscription id or tenant id: $_" }
 }
 
-# Write merged vars to .env and chatbot/.env
-$rootEnvPath = Join-Path -Path (Get-Location) -ChildPath ".env"
-$chatbotEnvPath = Join-Path -Path (Get-Location) -ChildPath "chatbot\.env"
+# Determine repository root (two levels up from scripts/test_env)
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$repoRoot = Resolve-Path (Join-Path -Path $scriptDir -ChildPath "..\..")
+$rootEnvPath = Join-Path -Path $repoRoot -ChildPath ".env"
+$chatbotDir = Join-Path -Path $repoRoot -ChildPath "chatbot"
+$chatbotEnvPath = Join-Path -Path $chatbotDir -ChildPath ".env"
 
+# Ensure chatbot directory exists
+if (-not (Test-Path $chatbotDir)) { New-Item -ItemType Directory -Path $chatbotDir | Out-Null }
 
 # Force DEV_MODE to always be true for development
 $envVars['DEV_MODE'] = 'true'
 
-Write-Output "Writing merged .env to $rootEnvPath and $chatbotEnvPath"
+Write-Output "Writing merged .env to $rootEnvPath and $chatbotEnvPath (repo root: $repoRoot)"
 
-# read existing root env
+# read existing root env (create if missing)
+if (-not (Test-Path $rootEnvPath)) { New-Item -ItemType File -Path $rootEnvPath -Force | Out-Null }
 $rootEnv = Read-EnvFile -path $rootEnvPath
 foreach ($k in $envVars.Keys) { $rootEnv[$k] = $envVars[$k] }
 Write-EnvFile -path $rootEnvPath -env $rootEnv
 
+# read/create chatbot env
+if (-not (Test-Path $chatbotEnvPath)) { New-Item -ItemType File -Path $chatbotEnvPath -Force | Out-Null }
 $chatEnv = Read-EnvFile -path $chatbotEnvPath
 foreach ($k in $envVars.Keys) { $chatEnv[$k] = $envVars[$k] }
 Write-EnvFile -path $chatbotEnvPath -env $chatEnv
 
-Write-Output "Merged .env written. You can now run .\scripts\test_env\start_server.py to start the app."
+Write-Output "Merged .env written."
 
+# Diagnostic: print merged env vars so the caller can see what was written
+Write-Output "--- MERGED ENV VARS ---"
+foreach ($k in $rootEnv.Keys | Sort-Object) {
+	Write-Output "$k=$($rootEnv[$k])"
+}
+Write-Output "--- END MERGED ENV VARS ---"
+
+############################################################
+# NOTE: Container provisioning (chat history, prompts, agent functions, etc.)
+# is intentionally delegated to `scripts/test_env/init_data.py` or the
+# infrastructure deployment script `scripts/infra/deploy.ps1`.
+#
+# `set_env.ps1` now only merges environment variables and performs discovery.
+# To create containers and upload initial data, run:
+#   python scripts/test_env/init_data.py
+############################################################
 Write-Output "Note: This script attempts to auto-discover endpoints and AOAI deployment names; if deployments aren't found they must be set manually in the .env files."

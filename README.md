@@ -225,7 +225,11 @@ We use **official Microsoft SDKs** across the stack (Azure OpenAI, Cosmos DB, Az
   * `COSMOS_ENDPOINT`, `COSMOS_DB`, `COSMOS_CONTAINER`
   * `SEARCH_ENDPOINT`, `SEARCH_INDEX`
   * `FABRIC_WAREHOUSE_ENDPOINT` or Lakehouse SQL endpoint DSN
-* Optional SP fallback (for automation only): `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` (not used in app runtime; MI is primary).
+
+Authentication: this project is configured for RBAC-only operation. No client
+secrets should be stored in the repo. For local development, sign in with the
+Azure CLI (`az login`) or your IDE so `DefaultAzureCredential` can pick up your
+user credentials. In Azure, the Container App uses a managed identity.
 
 **Guidelines**
 

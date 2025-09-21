@@ -16,6 +16,8 @@ azure-search-documents
 azure-keyvault-secrets
 azure-monitor-opentelemetry
 azure-storage-blob
+azure-mgmt-resource
+azure-mgmt-cosmosdb
 
 # Data processing and validation
 pydantic

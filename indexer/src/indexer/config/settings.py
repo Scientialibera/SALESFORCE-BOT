@@ -12,11 +12,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AzureSettings(BaseSettings):
-    """Azure service configuration."""
-    
-    tenant_id: Optional[str] = Field(default=None, alias="AZURE_TENANT_ID")
-    client_id: Optional[str] = Field(default=None, alias="AZURE_CLIENT_ID")
-    client_secret: Optional[str] = Field(default=None, alias="AZURE_CLIENT_SECRET")
+    """Azure service configuration.
+
+    Authentication MUST use DefaultAzureCredential (az login for local dev,
+    or managed identity in Azure). Client id/secret/tenant env vars are not
+    supported in this repository.
+    """
 
 
 class AzureOpenAISettings(BaseSettings):
