@@ -22,17 +22,26 @@ class AzureSettings(BaseSettings):
 class AzureOpenAISettings(BaseSettings):
     """Azure OpenAI configuration."""
     
-    endpoint: str = Field(alias="AZURE_OPENAI_ENDPOINT")
-    api_version: str = Field(default="2024-02-15-preview", alias="AZURE_OPENAI_API_VERSION")
-    embedding_deployment: str = Field(alias="AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
-    embedding_dimensions: int = Field(default=1536, alias="AZURE_OPENAI_EMBEDDING_DIMENSIONS")
+    endpoint: str = Field(alias="AOAI_ENDPOINT")
+    api_version: str = Field(alias="AOAI_API_VERSION")
+    chat_deployment: str = Field(alias="AOAI_CHAT_DEPLOYMENT")
+    embedding_deployment: str = Field(alias="AOAI_EMBEDDING_DEPLOYMENT")
+    embedding_dimensions: int = Field(alias="AOAI_EMBEDDING_DIMENSIONS")
+    
+    class Config:
+        env_file = "../.env"
+        extra = "ignore"
 
 
 class DocumentIntelligenceSettings(BaseSettings):
     """Azure Document Intelligence configuration."""
     
-    endpoint: str = Field(alias="AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT")
-    api_version: str = Field(default="2024-11-30", alias="AZURE_DOCUMENT_INTELLIGENCE_API_VERSION")
+    endpoint: Optional[str] = Field(default=None, alias="AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT")
+    api_version: str = Field(alias="AZURE_DOCUMENT_INTELLIGENCE_API_VERSION")
+    
+    class Config:
+        env_file = "../.env"
+        extra = "ignore"
 
 
 class SearchSettings(BaseSettings):
@@ -40,44 +49,60 @@ class SearchSettings(BaseSettings):
     
     endpoint: str = Field(alias="AZURE_SEARCH_ENDPOINT")
     index_name: str = Field(alias="AZURE_SEARCH_INDEX")
-    api_version: str = Field(default="2024-07-01", alias="AZURE_SEARCH_API_VERSION")
+    api_version: str = Field(alias="AZURE_SEARCH_API_VERSION")
+    
+    class Config:
+        env_file = "../.env"
+        extra = "ignore"
 
 
 class CosmosSettings(BaseSettings):
     """Azure Cosmos DB configuration."""
     
-    endpoint: str = Field(alias="AZURE_COSMOS_ENDPOINT")
-    database: str = Field(alias="AZURE_COSMOS_DATABASE")
+    endpoint: str = Field(alias="COSMOS_ENDPOINT")
+    database: str = Field(alias="COSMOS_DATABASE_NAME")
     processed_files_container: str = Field(alias="AZURE_COSMOS_PROCESSED_FILES_CONTAINER")
     jobs_container: str = Field(alias="AZURE_COSMOS_JOBS_CONTAINER")
     contracts_container: str = Field(alias="AZURE_COSMOS_CONTRACTS_CONTAINER")
+    
+    class Config:
+        env_file = "../.env"
+        extra = "ignore"
 
 
 class GremlinSettings(BaseSettings):
     """Azure Cosmos DB Gremlin configuration."""
     
     endpoint: str = Field(alias="AZURE_COSMOS_GREMLIN_ENDPOINT")
-    port: int = Field(default=443, alias="AZURE_COSMOS_GREMLIN_PORT")
+    port: int = Field(alias="AZURE_COSMOS_GREMLIN_PORT")
     database: str = Field(alias="AZURE_COSMOS_GREMLIN_DATABASE")
     graph: str = Field(alias="AZURE_COSMOS_GREMLIN_GRAPH")
-    username: str = Field(alias="AZURE_COSMOS_GREMLIN_USERNAME")
-    password: str = Field(alias="AZURE_COSMOS_GREMLIN_PASSWORD")
+    username: Optional[str] = Field(default=None, alias="AZURE_COSMOS_GREMLIN_USERNAME")
+    password: Optional[str] = Field(default=None, alias="AZURE_COSMOS_GREMLIN_PASSWORD")
+    
+    class Config:
+        env_file = "../.env"
+        extra = "ignore"
 
 
 class FabricSettings(BaseSettings):
     """Microsoft Fabric configuration."""
     
-    workspace_id: str = Field(alias="FABRIC_WORKSPACE_ID")
-    lakehouse_id: str = Field(alias="FABRIC_LAKEHOUSE_ID")
-    sql_endpoint: str = Field(alias="FABRIC_SQL_ENDPOINT")
-    sql_database: str = Field(alias="FABRIC_SQL_DATABASE")
+    workspace_id: Optional[str] = Field(default=None, alias="FABRIC_WORKSPACE_ID")
+    lakehouse_id: Optional[str] = Field(default=None, alias="FABRIC_LAKEHOUSE_ID")
+    sql_endpoint: Optional[str] = Field(default=None, alias="FABRIC_SQL_ENDPOINT")
+    sql_database: Optional[str] = Field(default=None, alias="FABRIC_SQL_DATABASE")
+    
+    class Config:
+        env_file = "../.env"
+        extra = "ignore"
 
 
 class SharePointSettings(BaseSettings):
     """SharePoint Online configuration."""
     
     site_url: str = Field(alias="SHAREPOINT_SITE_URL")
-    library_name: str = Field(default="Documents", alias="SHAREPOINT_LIBRARY_NAME")
+    library_name: str = Field(alias="SHAREPOINT_LIBRARY_NAME")
     username: Optional[str] = Field(default=None, alias="SHAREPOINT_USERNAME")
     password: Optional[str] = Field(default=None, alias="SHAREPOINT_PASSWORD")
     client_id: Optional[str] = Field(default=None, alias="SHAREPOINT_CLIENT_ID")
@@ -95,76 +120,67 @@ class StorageSettings(BaseSettings):
 class ProcessingSettings(BaseSettings):
     """Document processing configuration."""
     
-    batch_size: int = Field(default=100, alias="BATCH_SIZE")
-    max_concurrent_requests: int = Field(default=10, alias="MAX_CONCURRENT_REQUESTS")
-    chunk_size: int = Field(default=1000, alias="CHUNK_SIZE")
-    chunk_overlap: int = Field(default=200, alias="CHUNK_OVERLAP")
-    max_file_size_mb: int = Field(default=50, alias="MAX_FILE_SIZE_MB")
-    supported_file_types: List[str] = Field(
-        default_factory=lambda: ["pdf", "docx", "doc", "txt", "md"],
-        alias="SUPPORTED_FILE_TYPES"
-    )
+    batch_size: int = Field(alias="BATCH_SIZE")
+    max_concurrent_requests: int = Field(alias="MAX_CONCURRENT_REQUESTS")
+    chunk_size: int = Field(alias="CHUNK_SIZE")
+    chunk_overlap: int = Field(alias="CHUNK_OVERLAP")
+    max_file_size_mb: int = Field(alias="MAX_FILE_SIZE_MB")
+    supported_file_types: List[str] = Field(alias="SUPPORTED_FILE_TYPES")
     
     # Document Intelligence options
-    extract_tables: bool = Field(default=True, alias="EXTRACT_TABLES")
-    extract_images: bool = Field(default=False, alias="EXTRACT_IMAGES")
-    ocr_enabled: bool = Field(default=True, alias="OCR_ENABLED")
-    language_detection: bool = Field(default=True, alias="LANGUAGE_DETECTION")
-    supported_languages: List[str] = Field(
-        default_factory=lambda: ["en", "es", "fr", "de", "it"],
-        alias="SUPPORTED_LANGUAGES"
-    )
+    extract_tables: bool = Field(alias="EXTRACT_TABLES")
+    extract_images: bool = Field(alias="EXTRACT_IMAGES")
+    ocr_enabled: bool = Field(alias="OCR_ENABLED")
+    language_detection: bool = Field(alias="LANGUAGE_DETECTION")
+    supported_languages: List[str] = Field(alias="SUPPORTED_LANGUAGES")
 
 
 class EmbeddingSettings(BaseSettings):
     """Embedding generation configuration."""
     
-    batch_size: int = Field(default=16, alias="EMBEDDING_BATCH_SIZE")
-    max_retries: int = Field(default=3, alias="EMBEDDING_MAX_RETRIES")
-    retry_delay_seconds: int = Field(default=5, alias="EMBEDDING_RETRY_DELAY_SECONDS")
+    batch_size: int = Field(alias="EMBEDDING_BATCH_SIZE")
+    max_retries: int = Field(alias="EMBEDDING_MAX_RETRIES")
+    retry_delay_seconds: int = Field(alias="EMBEDDING_RETRY_DELAY_SECONDS")
 
 
 class ChangeDetectionSettings(BaseSettings):
     """Change detection configuration."""
     
-    check_interval_minutes: int = Field(default=60, alias="CHECK_INTERVAL_MINUTES")
-    etag_cache_ttl_hours: int = Field(default=24, alias="ETAG_CACHE_TTL_HOURS")
-    delta_processing_enabled: bool = Field(default=True, alias="DELTA_PROCESSING_ENABLED")
+    check_interval_minutes: int = Field(alias="CHECK_INTERVAL_MINUTES")
+    etag_cache_ttl_hours: int = Field(alias="ETAG_CACHE_TTL_HOURS")
+    delta_processing_enabled: bool = Field(alias="DELTA_PROCESSING_ENABLED")
 
 
 class VectorSearchSettings(BaseSettings):
     """Vector search configuration."""
     
-    dimensions: int = Field(default=1536, alias="VECTOR_DIMENSIONS")
-    similarity_algorithm: str = Field(default="cosine", alias="SIMILARITY_ALGORITHM")
-    index_refresh_interval_seconds: int = Field(default=60, alias="INDEX_REFRESH_INTERVAL_SECONDS")
+    dimensions: int = Field(alias="VECTOR_DIMENSIONS")
+    similarity_algorithm: str = Field(alias="SIMILARITY_ALGORITHM")
+    index_refresh_interval_seconds: int = Field(alias="INDEX_REFRESH_INTERVAL_SECONDS")
 
 
 class GraphSettings(BaseSettings):
     """Graph database configuration."""
     
-    batch_size: int = Field(default=50, alias="GRAPH_BATCH_SIZE")
-    max_retries: int = Field(default=3, alias="GRAPH_MAX_RETRIES")
-    relationship_types: List[str] = Field(
-        default_factory=lambda: ["CONTAINS", "REFERENCES", "BELONGS_TO", "SIMILAR_TO"],
-        alias="RELATIONSHIP_TYPES"
-    )
+    batch_size: int = Field(alias="GRAPH_BATCH_SIZE")
+    max_retries: int = Field(alias="GRAPH_MAX_RETRIES")
+    relationship_types: List[str] = Field(alias="RELATIONSHIP_TYPES")
 
 
 class RateLimitSettings(BaseSettings):
     """Rate limiting configuration."""
     
-    sharepoint_requests_per_minute: int = Field(default=100, alias="SHAREPOINT_REQUESTS_PER_MINUTE")
-    document_intelligence_requests_per_minute: int = Field(default=20, alias="DOCUMENT_INTELLIGENCE_REQUESTS_PER_MINUTE")
-    openai_requests_per_minute: int = Field(default=60, alias="OPENAI_REQUESTS_PER_MINUTE")
+    sharepoint_requests_per_minute: int = Field(alias="SHAREPOINT_REQUESTS_PER_MINUTE")
+    document_intelligence_requests_per_minute: int = Field(alias="DOCUMENT_INTELLIGENCE_REQUESTS_PER_MINUTE")
+    openai_requests_per_minute: int = Field(alias="OPENAI_REQUESTS_PER_MINUTE")
 
 
 class CacheSettings(BaseSettings):
     """Cache configuration."""
     
-    ttl_hours: int = Field(default=24, alias="CACHE_TTL_HOURS")
-    metadata_cache_ttl_hours: int = Field(default=1, alias="METADATA_CACHE_TTL_HOURS")
-    embedding_cache_ttl_days: int = Field(default=7, alias="EMBEDDING_CACHE_TTL_DAYS")
+    ttl_hours: int = Field(alias="CACHE_TTL_HOURS")
+    metadata_cache_ttl_hours: int = Field(alias="METADATA_CACHE_TTL_HOURS")
+    embedding_cache_ttl_days: int = Field(alias="EMBEDDING_CACHE_TTL_DAYS")
 
 
 class RetrySettings(BaseSettings):
@@ -198,7 +214,7 @@ class Settings(BaseSettings):
     """Main application settings."""
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file="../.env",
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"

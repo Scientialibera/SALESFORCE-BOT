@@ -16,9 +16,10 @@ class AzureOpenAISettings(BaseSettings):
     """Azure OpenAI service configuration."""
     
     endpoint: str = Field(..., description="Azure OpenAI service endpoint")
-    api_version: str = Field(default="2023-12-01-preview", description="API version")
+    api_version: str = Field(default="2024-02-15-preview", description="API version")
     chat_deployment: str = Field(..., description="Chat completion deployment name")
     embedding_deployment: str = Field(..., description="Text embedding deployment name")
+    embedding_dimensions: int = Field(default=1536, description="Embedding dimensions")
     max_tokens: int = Field(default=4000, description="Maximum tokens for completions")
     temperature: float = Field(default=0.1, description="Temperature for completions")
     
@@ -56,14 +57,14 @@ class CosmosDBSettings(BaseSettings):
 class GremlinSettings(BaseSettings):
     """Gremlin graph database configuration."""
     
-    endpoint: str = Field(..., description="Gremlin endpoint")
-    database_name: str = Field(..., description="Graph database name")
-    graph_name: str = Field(..., description="Graph container name")
+    endpoint: str = Field(alias="AZURE_COSMOS_GREMLIN_ENDPOINT", description="Gremlin endpoint")
+    database_name: str = Field(alias="AZURE_COSMOS_GREMLIN_DATABASE", description="Graph database name")
+    graph_name: str = Field(alias="AZURE_COSMOS_GREMLIN_GRAPH", description="Graph container name")
     max_concurrent_connections: int = Field(default=10, description="Max concurrent connections")
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")
     
     class Config:
-        env_prefix = "GREMLIN_"
+        env_prefix = "AZURE_COSMOS_GREMLIN_"
         env_file = ".env"
         extra = "ignore"
         env_file = ".env"
@@ -90,7 +91,7 @@ class FabricLakehouseSettings(BaseSettings):
     """Microsoft Fabric lakehouse configuration for document retrieval and SQL queries."""
     
     sql_endpoint: str = Field(..., description="Fabric lakehouse SQL endpoint")
-    database: str = Field(..., description="Lakehouse database name")
+    database: str = Field(alias="FABRIC_SQL_DATABASE", description="Lakehouse database name")
     workspace_id: Optional[str] = Field(default=None, description="Fabric workspace ID")
     contracts_table: str = Field(default="contracts_text", description="Contracts table name")
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")

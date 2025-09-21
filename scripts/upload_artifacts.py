@@ -12,6 +12,7 @@ principal with appropriate permissions. If you lack permissions, pre-create the 
 instead of relying on CLI provisioning.
 """
 
+import argparse
 import asyncio
 import json
 import os
@@ -19,6 +20,7 @@ import sys
 import subprocess
 import shutil
 import time
+import platform
 
 # Ensure repo src is on path so we import the app consistently
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'chatbot', 'src'))
@@ -52,6 +54,64 @@ ASSETS_PROMPTS = os.path.join(os.path.dirname(__file__), 'assets', 'prompts')
 ASSETS_FUNCTIONS = os.path.join(os.path.dirname(__file__), 'assets', 'functions')
 ASSETS_FUNCTIONS_TOOLS = os.path.join(ASSETS_FUNCTIONS, 'tools')
 ASSETS_FUNCTIONS_AGENTS = os.path.join(ASSETS_FUNCTIONS, 'agents')
+
+def provision_cosmos_via_az(endpoint: str, database: str, containers: list, dry_run: bool = False, resource_group: str | None = None):
+    """Best-effort: use Azure CLI to create database and containers using AAD credentials.
+
+    This function performs management operations through the Azure CLI and requires the
+    signed-in principal to have sufficient privileges. If the CLI or permissions are not
+    available, the function will skip provisioning and the uploader will fail with an
+    actionable error explaining the required pre-steps.
+    """
+    # endpoint looks like https://<account>.documents.azure.com:443/
+    try:
+        parsed = endpoint.replace('https://', '').split('.')[0]
+        account = parsed
+    except Exception:
+        print('Could not parse Cosmos account name from endpoint', endpoint)
+        return
+
+    # If a resource_group was provided, use it; otherwise try to discover via az
+    rg = resource_group
+    if not rg:
+        try:
+            rg_lookup = subprocess.run([
+                'az','resource','list','--resource-type','Microsoft.DocumentDB/databaseAccounts','--query','[?contains(name, `'+account+'`)]','-o','json'
+            ], capture_output=True, text=True, check=False)
+            if rg_lookup.returncode == 0 and rg_lookup.stdout:
+                data = json.loads(rg_lookup.stdout)
+                if isinstance(data, list) and len(data) > 0:
+                    rg = data[0].get('resourceGroup')
+                else:
+                    rg = None
+            else:
+                rg = None
+        except Exception:
+            rg = None
+
+    if not rg:
+        print('Could not detect resource group for Cosmos account', account, '— skipping az provisioning. Please create resources manually or provide --resource-group.')
+        return
+
+    print(f'Provisioning Cosmos DB {database} and containers in account {account} (resource group {rg}) using Azure CLI...')
+
+    # Create database
+    db_cmd = ['az','cosmosdb','sql','database','create','--account-name',account,'-g',rg,'--name',database]
+    if dry_run:
+        print('[dry-run]', ' '.join(db_cmd))
+    else:
+        subprocess.run(db_cmd, check=False, shell=(platform.system() == 'Windows'))
+
+    # Create containers
+    for c in containers:
+        print('Ensuring container', c)
+        container_cmd = [
+            'az','cosmosdb','sql','container','create','--account-name',account,'-g',rg,'--database-name',database,'--name',c,'--partition-key-path','/id','--throughput','400'
+        ]
+        if dry_run:
+            print('[dry-run]', ' '.join(container_cmd))
+        else:
+            subprocess.run(container_cmd, check=False, shell=(platform.system() == 'Windows'))
 
 async def upload_prompts(prompts_repo):
     print('Uploading prompts...')
@@ -135,53 +195,10 @@ async def main():
     print('Connecting to Cosmos using application settings...')
     cosmos_conf = settings.cosmos_db
     # Provision Cosmos resources via Azure CLI using AAD (no account keys are used)
-    def provision_cosmos_via_az(endpoint: str, database: str, containers: list):
-        """Best-effort: use Azure CLI to create database and containers using AAD credentials.
-
-        This function performs management operations through the Azure CLI and requires the
-        signed-in principal to have sufficient privileges. If the CLI or permissions are not
-        available, the function will skip provisioning and the uploader will fail with an
-        actionable error explaining the required pre-steps.
-        """
-        # endpoint looks like https://<account>.documents.azure.com:443/
-        try:
-            parsed = endpoint.replace('https://', '').split('.')[0]
-            account = parsed
-        except Exception:
-            print('Could not parse Cosmos account name from endpoint', endpoint)
-            return
-
-        # Try to discover resource group via az resource show
-        try:
-            rg_lookup = subprocess.run([
-                'az','resource','list','--resource-type','Microsoft.DocumentDB/databaseAccounts','--query','[?contains(name, `'+account+'`)]','-o','json'
-            ], capture_output=True, text=True, check=False)
-            if rg_lookup.returncode == 0 and rg_lookup.stdout:
-                data = json.loads(rg_lookup.stdout)
-                if isinstance(data, list) and len(data) > 0:
-                    rg = data[0].get('resourceGroup')
-                else:
-                    rg = None
-            else:
-                rg = None
-        except Exception:
-            rg = None
-
-        if not rg:
-            print('Could not detect resource group for Cosmos account', account, '— skipping az provisioning. Please create resources manually.')
-            return
-
-        print(f'Provisioning Cosmos DB {database} and containers in account {account} (resource group {rg}) using Azure CLI...')
-
-        # Create database
-        subprocess.run(['az','cosmosdb','sql','database','create','--account-name',account,'-g',rg,'--name',database], check=False)
-
-        # Create containers
-        for c in containers:
-            print('Ensuring container', c)
-            subprocess.run([
-                'az','cosmosdb','sql','container','create','--account-name',account,'-g',rg,'--database-name',database,'--name',c,'--partition-key-path','/id','--throughput','400'
-            ], check=False)
+    # Note: helper is defined at module scope so it can be invoked from both main() and __main__.
+    
+    
+    # ...existing code...
 
     # Gather list of containers we will need
     containers_to_ensure = [
@@ -214,5 +231,48 @@ async def main():
 
     print('Upload complete.')
 
+def parse_args():
+    p = argparse.ArgumentParser(description='Upload prompts and functions, with optional Cosmos provisioning (AAD/az).')
+    p.add_argument('--provision-only', action='store_true', help='Only run Cosmos provisioning then exit.')
+    p.add_argument('--dry-run', action='store_true', help='Show az commands without executing them.')
+    p.add_argument('--yes', '-y', action='store_true', help='Assume yes for confirmation prompts.')
+    p.add_argument('--resource-group', '-g', dest='resource_group', help='Resource group for the Cosmos account (optional).')
+    return p.parse_args()
+
+
 if __name__ == '__main__':
+    args = parse_args()
+
+    # Allow admins to run provisioning without performing the upload
+    if args.provision_only:
+        print('Running provisioning only (no uploads).')
+        cosmos_conf = settings.cosmos_db
+        containers_to_ensure = [
+            cosmos_conf.chat_container,
+            cosmos_conf.cache_container,
+            cosmos_conf.prompts_container,
+            cosmos_conf.agent_functions_container,
+            cosmos_conf.sql_schema_container,
+            cosmos_conf.contracts_text_container,
+            cosmos_conf.processed_files_container,
+            cosmos_conf.account_resolver_container,
+            cosmos_conf.feedback_container,
+        ]
+        if not args.yes:
+            resp = input('Proceed to provision Cosmos DB resources using Azure CLI? (y/N): ')
+            if resp.strip().lower() not in ('y', 'yes'):
+                print('Aborting.')
+                sys.exit(0)
+        # prefer explicit CLI resource-group, then fallback to environment var CONTAINER_APP_RESOURCE_GROUP
+        rg = args.resource_group or os.environ.get('CONTAINER_APP_RESOURCE_GROUP')
+        provision_cosmos_via_az(cosmos_conf.endpoint, cosmos_conf.database_name, containers_to_ensure, dry_run=args.dry_run, resource_group=rg)
+        print('Provisioning step complete.')
+        sys.exit(0)
+
+    # Default behavior: run uploads (will also attempt best-effort provisioning)
+    if args.dry_run:
+        print('Dry-run: provisioning commands will be printed but not executed.')
+    # If a resource group was provided on the CLI, expose it via env for main()
+    if args.resource_group:
+        os.environ.setdefault('CONTAINER_APP_RESOURCE_GROUP', args.resource_group)
     asyncio.run(main())
