@@ -33,7 +33,8 @@ class SQLService:
         schema_repository: SQLSchemaRepository,
         cache_service: CacheService,
         telemetry_service: TelemetryService,
-        settings: FabricLakehouseSettings
+        settings: FabricLakehouseSettings,
+        dev_mode: bool = False
     ):
         """
         Initialize the SQL service.
@@ -44,12 +45,14 @@ class SQLService:
             cache_service: Cache service for query results
             telemetry_service: Telemetry service for monitoring
             settings: Fabric lakehouse connection settings
+            dev_mode: Whether to use dummy data instead of real database
         """
         self.aoai_client = aoai_client
         self.schema_repository = schema_repository
         self.cache_service = cache_service
         self.telemetry_service = telemetry_service
         self.settings = settings
+        self.dev_mode = dev_mode
         
         # Build connection string from settings
         self.connection_string = self._build_connection_string()
@@ -371,6 +374,10 @@ class SQLService:
             Query execution result
         """
         try:
+            # Return dummy data in dev mode
+            if self.dev_mode:
+                return self._get_dummy_sql_data(query)
+            
             # Add row limit to prevent large result sets
             limited_query = self._add_row_limit(query)
             
@@ -584,4 +591,137 @@ class SQLService:
             preview_query,
             rbac_context,
             use_cache=True
+        )
+    
+    def _get_dummy_sql_data(self, query: str) -> QueryResult:
+        """
+        Generate dummy SQL data for development mode.
+        
+        Args:
+            query: The SQL query being executed
+            
+        Returns:
+            Query result with dummy data
+        """
+        query_lower = query.lower()
+        
+        # Dummy data for opportunities query
+        if "opportunities" in query_lower and "account" in query_lower:
+            data = [
+                {
+                    "id": "opp_001",
+                    "name": "Salesforce CRM Upgrade",
+                    "amount": 2500000.0,
+                    "stage": "Closed Won",
+                    "close_date": "2024-03-15",
+                    "account_name": "Salesforce Inc",
+                    "account_id": "acc_salesforce"
+                },
+                {
+                    "id": "opp_002", 
+                    "name": "Microsoft 365 Integration",
+                    "amount": 1800000.0,
+                    "stage": "Proposal",
+                    "close_date": "2024-11-30",
+                    "account_name": "Microsoft Corporation",
+                    "account_id": "acc_microsoft"
+                },
+                {
+                    "id": "opp_003",
+                    "name": "Oracle Database Migration",
+                    "amount": 3200000.0,
+                    "stage": "Negotiation",
+                    "close_date": "2024-12-15",
+                    "account_name": "Oracle Corporation", 
+                    "account_id": "acc_oracle"
+                }
+            ]
+        # Dummy data for accounts query
+        elif "accounts" in query_lower:
+            data = [
+                {
+                    "id": "acc_salesforce",
+                    "name": "Salesforce Inc",
+                    "owner_email": "owner@salesforce.com",
+                    "created_at": "2023-01-15",
+                    "updated_at": "2024-09-21"
+                },
+                {
+                    "id": "acc_microsoft", 
+                    "name": "Microsoft Corporation",
+                    "owner_email": "owner@microsoft.com",
+                    "created_at": "2023-02-20",
+                    "updated_at": "2024-09-21"
+                },
+                {
+                    "id": "acc_oracle",
+                    "name": "Oracle Corporation",
+                    "owner_email": "owner@oracle.com", 
+                    "created_at": "2023-03-10",
+                    "updated_at": "2024-09-21"
+                },
+                {
+                    "id": "acc_aws",
+                    "name": "Amazon Web Services",
+                    "owner_email": "owner@aws.com",
+                    "created_at": "2023-04-05",
+                    "updated_at": "2024-09-21"
+                },
+                {
+                    "id": "acc_google",
+                    "name": "Google LLC",
+                    "owner_email": "owner@google.com",
+                    "created_at": "2023-05-12", 
+                    "updated_at": "2024-09-21"
+                },
+                {
+                    "id": "acc_sap",
+                    "name": "SAP SE",
+                    "owner_email": "owner@sap.com",
+                    "created_at": "2023-06-18",
+                    "updated_at": "2024-09-21"
+                }
+            ]
+        # Dummy data for contacts query
+        elif "contacts" in query_lower:
+            data = [
+                {
+                    "id": "contact_001",
+                    "first_name": "John",
+                    "last_name": "Smith", 
+                    "email": "john.smith@salesforce.com",
+                    "account_id": "acc_salesforce"
+                },
+                {
+                    "id": "contact_002",
+                    "first_name": "Jane",
+                    "last_name": "Doe",
+                    "email": "jane.doe@microsoft.com", 
+                    "account_id": "acc_microsoft"
+                },
+                {
+                    "id": "contact_003",
+                    "first_name": "Bob",
+                    "last_name": "Johnson",
+                    "email": "bob.johnson@oracle.com",
+                    "account_id": "acc_oracle"
+                }
+            ]
+        # Default empty data
+        else:
+            data = []
+        
+        return QueryResult(
+            success=True,
+            data=data,
+            metadata={
+                "columns": list(data[0].keys()) if data else [],
+                "row_count": len(data),
+                "query": query,
+                "has_more_data": False,
+                "dev_mode": True
+            },
+            rows_affected=len(data),
+            execution_time_ms=50,  # Mock execution time
+            error_message=None
         )

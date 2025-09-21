@@ -50,40 +50,51 @@ class FabricLakehouseClient:
             logger.info("Fabric client running in dev mode - using dummy data")
     
     def _get_dummy_document_data(self) -> List[Dict[str, Any]]:
-        """Generate dummy document data for testing."""
+        """Generate dummy document data for sales planning context."""
         return [
             {
-                "file_id": "doc_001",
+                "file_id": "doc_salesforce_account_plan",
                 "account_id": "acc_salesforce",
-                "file_name": "Salesforce_Master_Agreement_2024.pdf",
-                "file_text": "This Master Service Agreement is entered into between Salesforce and the Customer. The agreement covers software licensing, support services, and data processing terms. Key provisions include: 1) Service Level Agreements with 99.5% uptime guarantee, 2) Data security and privacy protections, 3) Intellectual property rights, 4) Termination clauses and data export procedures.",
-                "file_summary": "Master Service Agreement between Salesforce and customer covering licensing, support, and data processing terms with SLA guarantees.",
-                "sharepoint_url": "https://company.sharepoint.com/contracts/Salesforce_Master_Agreement_2024.pdf",
+                "file_name": "Salesforce_Account_Plan_2024.pdf",
+                "file_text": "Salesforce Account Plan 2024. Current Status: Active Enterprise customer with $2.5M annual contract. Key contacts: CEO Marc Benioff, CTO Parker Harris. Current solutions: Sales Cloud Enterprise, Service Cloud, Marketing Cloud. Expansion opportunities: Einstein Sales, MuleSoft integration, Slack integration. Renewal due: March 15, 2025. Risk factors: AWS hosting costs increasing, considering Microsoft migration. Upsell potential: $500K in additional licenses.",
+                "file_summary": "Salesforce account plan showing $2.5M enterprise customer with expansion opportunities in Einstein Sales and integrations.",
+                "sharepoint_url": "https://company.sharepoint.com/accounts/Salesforce_Account_Plan_2024.pdf",
                 "last_modified": datetime.now(),
                 "content_type": "application/pdf",
                 "file_size": 245760
             },
             {
-                "file_id": "doc_002", 
+                "file_id": "doc_microsoft_opportunity", 
                 "account_id": "acc_microsoft",
-                "file_name": "Microsoft_Enterprise_Agreement_2024.pdf",
-                "file_text": "Microsoft Enterprise Agreement for software licensing and cloud services. This agreement provides volume licensing for Microsoft 365, Azure, and other enterprise products. Terms include: 1) Volume discount pricing, 2) Annual true-up process, 3) Software Assurance benefits, 4) Usage rights and compliance obligations.",
-                "file_summary": "Microsoft Enterprise Agreement covering volume licensing for Microsoft 365, Azure and enterprise products with volume discounts.",
-                "sharepoint_url": "https://company.sharepoint.com/contracts/Microsoft_Enterprise_Agreement_2024.pdf",
+                "file_name": "Microsoft_Cloud_Opportunity_Assessment.pdf",
+                "file_text": "Microsoft Cloud Opportunity Assessment. Prospect Status: High-priority enterprise target with 221K employees and $245B revenue. Current technology stack: Legacy on-premises systems, minimal cloud adoption. Opportunity: $50M+ Azure migration project, Teams collaboration, Office 365 enterprise agreement. Key decision makers: CEO Satya Nadella, EVP Scott Guthrie. Competition: AWS currently preferred vendor. Timeline: 18-month sales cycle. Success factors: Demonstrate Azure cost savings vs AWS, provide migration expertise.",
+                "file_summary": "Microsoft cloud opportunity assessment for $50M+ Azure migration and Office 365 enterprise deal.",
+                "sharepoint_url": "https://company.sharepoint.com/opportunities/Microsoft_Cloud_Opportunity_Assessment.pdf",
                 "last_modified": datetime.now(),
                 "content_type": "application/pdf", 
                 "file_size": 342150
             },
             {
-                "file_id": "doc_003",
+                "file_id": "doc_oracle_renewal_strategy",
                 "account_id": "acc_oracle",
-                "file_name": "Oracle_Database_License_Agreement.pdf",
-                "file_text": "Oracle Database licensing agreement for enterprise deployment. Covers Oracle Database Enterprise Edition licensing for production and development environments. Key terms: 1) Named User Plus licensing model, 2) High Availability and disaster recovery rights, 3) Development and testing usage permissions, 4) Audit and compliance requirements.",
-                "file_summary": "Oracle Database Enterprise Edition licensing agreement with Named User Plus model and high availability rights.",
-                "sharepoint_url": "https://company.sharepoint.com/contracts/Oracle_Database_License_Agreement.pdf",
+                "file_name": "Oracle_Database_Renewal_Strategy.pdf",
+                "file_text": "Oracle Database Renewal Strategy. Current Status: Active customer with $1.8M annual support contract expiring November 30, 2024. Database versions: Oracle 19c Enterprise Edition. Key contacts: CEO Safra Catz, EVP Juan Loaiza. Current pain points: High licensing costs, complex upgrade path. Alternatives considered: AWS RDS, Azure Database, PostgreSQL migration. Retention strategy: Offer Oracle Cloud migration incentives, negotiate 20% discount on renewal. Risk: Customer evaluating open-source alternatives.",
+                "file_summary": "Oracle database renewal strategy for $1.8M support contract with focus on cloud migration incentives.",
+                "sharepoint_url": "https://company.sharepoint.com/renewals/Oracle_Database_Renewal_Strategy.pdf",
                 "last_modified": datetime.now(),
                 "content_type": "application/pdf",
                 "file_size": 189440
+            },
+            {
+                "file_id": "doc_sap_prospect_analysis",
+                "account_id": "acc_sap",
+                "file_name": "SAP_SE_Prospect_Analysis.pdf",
+                "file_text": "SAP SE Prospect Analysis. Target Profile: European enterprise software leader with 111K employees and $33.8B revenue. Current ERP: Legacy SAP ECC 6.0. Opportunity: S/4HANA migration project valued at $25M. Key decision makers: CEO Christian Klein, COO Luka Mucic. Competition: Oracle ERP Cloud, Microsoft Dynamics. Entry strategy: Partner with existing Salesforce integration, demonstrate ROI through digital transformation. Timeline: 24-month evaluation process.",
+                "file_summary": "SAP prospect analysis for $25M S/4HANA migration opportunity with Salesforce integration angle.",
+                "sharepoint_url": "https://company.sharepoint.com/prospects/SAP_SE_Prospect_Analysis.pdf",
+                "last_modified": datetime.now(),
+                "content_type": "application/pdf",
+                "file_size": 298000
             }
         ]
     

@@ -11,7 +11,7 @@ def test_server():
     headers = {"Content-Type": "application/json"}
     data = {
         "messages": [
-            {"role": "user", "content": "What is Microsoft?"}
+            {"role": "user", "content": "Who are you?"}
         ],
         "user_id": "test-user",
         "session_id": "test-session"

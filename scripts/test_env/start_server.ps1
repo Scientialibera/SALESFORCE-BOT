@@ -60,7 +60,6 @@ $appModule = "chatbot.app:app"
 $hostPort = "--host 127.0.0.1 --port 8000"
 $logLevel = "--log-level info"
 
-# Start as background process. Redirect stdout and stderr to separate files to avoid Start-Process limitation.
-$errLogPath = "${logPath}.err"
-Start-Process -FilePath $pythonExe -ArgumentList "$uvicornModule $appModule $hostPort $logLevel" -WorkingDirectory $repoRoot -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $errLogPath
-Write-Output "Uvicorn process started. Check $logPath and $errLogPath for logs."
+# Start as background process. Combine stderr with stdout so only server.log is created.
+Start-Process -FilePath $pythonExe -ArgumentList "$uvicornModule $appModule $hostPort $logLevel" -WorkingDirectory $repoRoot -NoNewWindow -RedirectStandardOutput $logPath
+Write-Output "Uvicorn process started. Check $logPath for logs."

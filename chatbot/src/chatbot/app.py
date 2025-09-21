@@ -218,7 +218,8 @@ async def lifespan(app: FastAPI):
             app_state.sql_schema_repository,
             app_state.cache_service,
             app_state.telemetry_service,
-            settings.fabric_lakehouse
+            settings.fabric_lakehouse,
+            dev_mode=settings.dev_mode
         )
         app_state.feedback_service = FeedbackService(app_state.feedback_repository)
         app_state.graph_service = GraphService(

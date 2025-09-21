@@ -10,6 +10,29 @@ param(
 # set the required environment variables manually or have an administrator pre-create
 # the Cosmos DB resources.
 
+function Test-EnvFileBOM {
+	param([string]$path)
+	if (Test-Path $path) {
+		$bytes = Get-Content -Path $path -Encoding Byte -TotalCount 3
+		if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+			return $true
+		}
+	}
+	return $false
+}
+
+function Remove-EnvFileBOM {
+	param([string]$path)
+	if (Test-Path $path) {
+		$content = Get-Content -Path $path -Encoding UTF8 -Raw
+		if ($content -and $content.StartsWith([char]0xFEFF)) {
+			$content = $content.Substring(1)
+			Set-Content -Path $path -Value $content -Encoding UTF8 -NoNewline
+			Write-Output "Removed BOM from $path"
+		}
+	}
+}
+
 function Read-EnvFile {
 	param([string]$path)
 	$h = @{}
@@ -44,12 +67,33 @@ function Write-EnvFile {
 	foreach ($k in $env.Keys) {
 		if (-not ($orderedKeys -contains $k)) { $lines += "$k=$($env[$k])" }
 	}
-	Set-Content -Path $path -Value ($lines -join "`n") -Encoding UTF8
+	# Write file without BOM using .NET StreamWriter
+	$content = $lines -join "`n"
+	try {
+		$stream = [System.IO.StreamWriter]::new($path, $false, [System.Text.UTF8Encoding]::new($false))
+		$stream.Write($content)
+		$stream.Close()
+	} catch {
+		# Fallback to Set-Content if StreamWriter fails
+		Set-Content -Path $path -Value $content -Encoding UTF8
+	}
+	
+	# Verify no BOM was accidentally added
+	if (Test-EnvFileBOM -path $path) {
+		Write-Warning "BOM detected after writing $path - this should not happen. Please check your PowerShell version."
+	}
 }
 
 # Merge .env.example into .env, preserving existing values and adding missing ones
 $envPath = Join-Path -Path (Get-Location) -ChildPath ".env"
 $examplePath = Join-Path -Path (Get-Location) -ChildPath ".env.example"
+
+# Check for BOM in existing .env file
+if (Test-EnvFileBOM -path $envPath) {
+	Write-Warning ".env file contains a UTF-8 BOM (Byte Order Mark) which can cause environment variable parsing issues."
+	Write-Warning "This may cause the application to fail to start."
+	Remove-EnvFileBOM -path $envPath
+}
 
 Write-Output "Merging .env.example into .env..."
 
@@ -300,6 +344,9 @@ $rootEnvPath = Join-Path -Path (Get-Location) -ChildPath ".env"
 $chatbotEnvPath = Join-Path -Path (Get-Location) -ChildPath "chatbot\.env"
 
 
+# Force DEV_MODE to always be true for development
+$envVars['DEV_MODE'] = 'true'
+
 Write-Output "Writing merged .env to $rootEnvPath and $chatbotEnvPath"
 
 # read existing root env
@@ -311,6 +358,6 @@ $chatEnv = Read-EnvFile -path $chatbotEnvPath
 foreach ($k in $envVars.Keys) { $chatEnv[$k] = $envVars[$k] }
 Write-EnvFile -path $chatbotEnvPath -env $chatEnv
 
-Write-Output "Merged .env written. You can now run .\scripts\start_server.ps1 to start the app."
+Write-Output "Merged .env written. You can now run .\scripts\test_env\start_server.py to start the app."
 
 Write-Output "Note: This script attempts to auto-discover endpoints and AOAI deployment names; if deployments aren't found they must be set manually in the .env files."

@@ -224,7 +224,10 @@ class AccountResolverService:
                 account = Account(
                     id=acc_dict['id'],
                     name=acc_dict['name'],
-                    type=acc_dict.get('type', 'unknown')
+                    display_name=acc_dict['name'],
+                    account_type=acc_dict.get('type', 'unknown'),
+                    owner_user_id='system',
+                    owner_email='system@example.com'
                 )
                 
                 confidence = acc_dict.get('similarity_score', 0.0)
@@ -706,16 +709,12 @@ Amazon"""
             )
 
         base_accounts = [
-            mk("ACC-001", "Microsoft Corporation", "enterprise", "Technology", "Leading technology company specializing in software and cloud services"),
-            mk("ACC-002", "Apple Inc.", "enterprise", "Technology", "Consumer electronics and software company"),
-            mk("ACC-003", "Amazon.com Inc.", "enterprise", "E-commerce", "Global e-commerce and cloud computing giant"),
-            mk("ACC-004", "Google LLC", "enterprise", "Technology", "Internet search and advertising technology company"),
-            mk("ACC-005", "Meta Platforms Inc.", "enterprise", "Technology", "Social media and virtual reality company"),
-            mk("ACC-006", "Tesla Inc.", "enterprise", "Automotive", "Electric vehicle and clean energy company"),
-            mk("ACC-007", "Netflix Inc.", "enterprise", "Entertainment", "Streaming entertainment service"),
-            mk("ACC-008", "Salesforce Inc.", "enterprise", "Technology", "Customer relationship management platform"),
-            mk("ACC-009", "Oracle Corporation", "enterprise", "Technology", "Database software and cloud computing company"),
-            mk("ACC-010", "IBM Corporation", "enterprise", "Technology", "Technology and consulting services company"),
+            mk("acc_salesforce", "Salesforce Inc", "enterprise", "Technology", "Customer relationship management platform"),
+            mk("acc_microsoft", "Microsoft Corporation", "enterprise", "Technology", "Leading technology company specializing in software and cloud services"),
+            mk("acc_oracle", "Oracle Corporation", "enterprise", "Technology", "Database software and cloud computing company"),
+            mk("acc_aws", "Amazon Web Services", "enterprise", "Cloud Computing", "Global cloud infrastructure provider"),
+            mk("acc_google", "Google LLC", "enterprise", "Technology", "Internet search and advertising technology company"),
+            mk("acc_sap", "SAP SE", "enterprise", "Enterprise Software", "Enterprise resource planning and business software company"),
         ]
         
         # Filter based on user roles (simplified logic)

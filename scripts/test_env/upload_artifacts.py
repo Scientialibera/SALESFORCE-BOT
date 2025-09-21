@@ -4,7 +4,7 @@ Deterministic uploader for prompts and agent function definitions.
 Loads .env, imports application settings and repository classes, and uploads
 system prompts and function/agent definitions from scripts/assets.
 
-Run this after `scripts/set_env.ps1` so .env contains the correct AOAI_* and COSMOS_* values.
+Run this after `scripts/test_env/set_env.ps1` so .env contains the correct AOAI_* and COSMOS_* values.
 
 Security note: this script does NOT use or recommend account keys. Management/provisioning
 operations (when attempted) are performed via the Azure CLI (AAD) and require an authenticated
@@ -23,10 +23,12 @@ import time
 import platform
 
 # Ensure repo src is on path so we import the app consistently
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'chatbot', 'src'))
+current_dir = os.path.dirname(__file__)
+project_root = os.path.dirname(os.path.dirname(current_dir))
+sys.path.insert(0, os.path.join(project_root, 'chatbot', 'src'))
 
 # Load .env if present so the uploader uses the same values as the app
-env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+env_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
 if os.path.exists(env_path):
     print(f'Loading environment from {env_path}')
     with open(env_path, 'r', encoding='utf-8') as f:
@@ -46,12 +48,12 @@ try:
     from chatbot.repositories.prompts_repository import PromptsRepository
     from chatbot.repositories.agent_functions_repository import AgentFunctionsRepository
 except Exception as e:
-    print('\nERROR: failed to import application modules. Make sure you ran scripts/set_env.ps1 and that .env contains the required values (AOAI_*, COSMOS_*, SEARCH_*, etc).')
+    print('\nERROR: failed to import application modules. Make sure you ran scripts/test_env/set_env.ps1 and that .env contains the required values (AOAI_*, COSMOS_*, SEARCH_*, etc).')
     print('Import error:', e)
     sys.exit(2)
 
-ASSETS_PROMPTS = os.path.join(os.path.dirname(__file__), 'assets', 'prompts')
-ASSETS_FUNCTIONS = os.path.join(os.path.dirname(__file__), 'assets', 'functions')
+ASSETS_PROMPTS = os.path.join(os.path.dirname(__file__), '..', 'assets', 'prompts')
+ASSETS_FUNCTIONS = os.path.join(os.path.dirname(__file__), '..', 'assets', 'functions')
 ASSETS_FUNCTIONS_TOOLS = os.path.join(ASSETS_FUNCTIONS, 'tools')
 ASSETS_FUNCTIONS_AGENTS = os.path.join(ASSETS_FUNCTIONS, 'agents')
 
