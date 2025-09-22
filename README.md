@@ -2,11 +2,21 @@
 
 ## Overview
 
-The **Account Q&A Bot** answers questions about customer accounts by combining structured Sales Cloud data (Salesforce) and unstructured contract documents (SharePoint PDFs). **Important:** The bot does not directly connect to Salesforce or SharePoint - instead, it queries a **data lakehouse** where a dedicated data engineering team extracts, transforms, and loads data from these source systems.
+**Chatbot Logic (Agentic, Planner-First):**
+- Planner parses user input, extracts intent, and identifies accounts_mentioned.
+- Account resolver runs once per request, mapping account names to IDs with confidence scores.
+- Agents: SQL agent (structured data), Graph agent (relationship/graph data). Each agent receives resolved accounts and user query.
+- Agents do not perform RBAC or account resolution; they only execute queries.
+- SQL agent calls SQLService, which injects RBAC WHERE clauses (tenant/role/account) at query construction. Dev mode disables RBAC and uses dummy data.
+- Graph agent calls GraphService for graph queries; RBAC is not enforced at the agent layer.
+- All tool access (e.g., SQL, graph, document retrieval) is via agent methods, not direct user input.
+- RBAC logic is centralized in the query construction layer, never in agents or resolver.
+- Dev mode: disables RBAC and SQL DB connection, but Graph API remains accessible.
+- All logic is modular: planner → resolver → agent → service (RBAC at service only).
 
-It runs as a web SPA + backend Chat API hosted on **Azure Container Apps**, fronted by **Azure Front Door (WAF + CDN)** and **Azure API Management** for auth, throttling, and routing.
-
-Data lands in **Microsoft Fabric** using **Dataflows Gen2** and Spark notebooks, following a **Medallion (Bronze/Silver/Gold)** pattern. The bot uses a **Planner-first agentic architecture** (Semantic Kernel style): the **Planner** is the only chat-facing component; it decides whether to call SQL/Graph tools and then composes the final answer with citations.
+**Indexer Logic:**
+- Indexer ingests SharePoint documents and Salesforce data, populates Cosmos DB (graph) and Azure AI Search (vector store).
+- Handles document parsing, metadata extraction, and relationship mapping for downstream chatbot use.
 
 ## Data Architecture
 

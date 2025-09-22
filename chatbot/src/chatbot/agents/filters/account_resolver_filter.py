@@ -6,6 +6,7 @@ providing more accurate entity resolution by considering term frequency
 and document frequency in the account corpus.
 """
 
+
 import re
 from typing import List, Dict, Any, Tuple, Optional
 import numpy as np
@@ -13,10 +14,6 @@ import structlog
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-from nltk.stem import PorterStemmer
 
 from chatbot.models.rbac import RBACContext
 
@@ -45,8 +42,7 @@ class AccountResolverFilter:
         self.account_vectors: Optional[np.ndarray] = None
         self.account_corpus: List[str] = []
         self.account_metadata: List[Dict[str, Any]] = []
-        self.stemmer = PorterStemmer()
-        self._initialize_nltk()
+    # NLTK removed: no stemming, no custom stopwords/tokenizer
         
         logger.info(
             "Account resolver filter initialized",
@@ -54,51 +50,25 @@ class AccountResolverFilter:
             max_candidates=max_candidates
         )
     
-    def _initialize_nltk(self):
-        """Initialize NLTK components."""
-        try:
-            nltk.data.find('tokenizers/punkt')
-        except LookupError:
-            nltk.download('punkt', quiet=True)
-        
-        try:
-            nltk.data.find('corpora/stopwords')
-        except LookupError:
-            nltk.download('stopwords', quiet=True)
+
+    # NLTK initialization removed
     
     def _preprocess_text(self, text: str) -> str:
         """
-        Preprocess text for TF-IDF vectorization.
-        
+        Preprocess text for TF-IDF vectorization (no NLTK).
         Args:
             text: Raw text to preprocess
-            
         Returns:
             Preprocessed text
         """
         if not text:
             return ""
-        
-        # Convert to lowercase
+        # Lowercase and remove special characters/numbers
         text = text.lower()
-        
-        # Remove special characters and numbers
         text = re.sub(r'[^a-zA-Z\s]', ' ', text)
-        
-        # Tokenize
-        tokens = word_tokenize(text)
-        
-        # Remove stopwords
-        stop_words = set(stopwords.words('english'))
-        tokens = [token for token in tokens if token not in stop_words]
-        
-        # Stem tokens
-        tokens = [self.stemmer.stem(token) for token in tokens]
-        
-        # Remove empty tokens and single characters
-        tokens = [token for token in tokens if len(token) > 1]
-        
-        return ' '.join(tokens)
+        # Collapse whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
     
     def fit(self, accounts: List[Dict[str, Any]]) -> None:
         """

@@ -29,19 +29,19 @@
 {"event": "Graph agent plugin registered with kernel"}
 {"event": "Agents will load functions dynamically from database"}
 {"event": "Application startup completed successfully"}
-{"request_id": "9a0869de", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12", "event": "HTTP request started"}
-DEBUG: [9a0869de] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [9a0869de] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12', 'accept-encoding': 'gzip, deflate, br', 'content-type': 'application/json', 'content-length': '212'}
-DEBUG: [9a0869de] Tasks before request: 4
-DEBUG: [9a0869de] Event loop running: True, closed: False
-DEBUG: [9a0869de] About to call next middleware/handler
+{"request_id": "c05cd3c8", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12", "event": "HTTP request started"}
+DEBUG: [c05cd3c8] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
+DEBUG: [c05cd3c8] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12', 'accept-encoding': 'gzip, deflate, br', 'content-type': 'application/json', 'content-length': '212'}
+DEBUG: [c05cd3c8] Tasks before request: 4
+DEBUG: [c05cd3c8] Event loop running: True, closed: False
+DEBUG: [c05cd3c8] About to call next middleware/handler
 {"url": "http://127.0.0.1:8000/api/v1/chat", "event": "Authenticating user request"}
 {"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "email": "", "roles": [], "is_admin": false, "permissions_count": 4, "event": "Created RBAC context"}
-{"session_id": "direct-test-1", "turn_id": "a92fcb8b-0bee-4c94-9478-283048886e87", "user_id": "dev-user", "message_length": 15, "event": "Processing chat message"}
+{"session_id": "direct-test-1", "turn_id": "526ba146-79d6-42c7-a974-f4844744b1a2", "user_id": "dev-user", "message_length": 15, "event": "Processing chat message"}
 {"event": "Created Cosmos DB client with managed identity"}
 {"chat_id": "direct-test-1", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Chat history not found"}
-{"error": "'name'", "event": "Failed to list function definitions"}
-{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "error": "'name'", "event": "Failed to get filtered functions"}
+{"function_count": 5, "event": "Retrieved all function definitions"}
+{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "error": "'RBACService' object has no attribute 'check_function_permission'", "event": "Failed to get filtered functions"}
 {"agent_name": "planner_system", "tenant_id": "74c77be6-1ad3-4957-a4f2-94028372d7d6", "scenario": "general", "prompt_id": "prompt_planner_system", "event": "Retrieved system prompt"}
 {"event": "Created Azure OpenAI client with managed identity token"}
 {"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
@@ -49,20 +49,20 @@ DEBUG: [9a0869de] About to call next middleware/handler
 {"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
 {"event": "Created Azure OpenAI client with managed identity token"}
 {"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
-{"error": "RetryError[<Future at 0x1a02f55f230 state=finished raised APIConnectionError>]", "event": "Function-calling plan creation failed"}
-{"error": "RetryError[<Future at 0x1a02f55f230 state=finished raised APIConnectionError>]", "event": "Function-calling planning failed, falling back to basic planner"}
-{"plan_id": "f637edce-29b4-41a0-a382-9d7eda527118", "plan_type": "no_tool", "agent_type": "direct_response", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Basic plan created"}
-{"plan_id": "f637edce-29b4-41a0-a382-9d7eda527118", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "f637edce-29b4-41a0-a382-9d7eda527118", "execution_id": "a729b040-f661-4c41-a5d0-6a6749bee702", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Starting plan execution"}
-{"step_id": "65a1055e-e834-4dfb-ab7d-fc59a5c44971", "tool_name": "direct_response", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Executing plan step"}
-{"step_id": "65a1055e-e834-4dfb-ab7d-fc59a5c44971", "event": "Direct response step executed successfully"}
-{"plan_id": "f637edce-29b4-41a0-a382-9d7eda527118", "execution_id": "a729b040-f661-4c41-a5d0-6a6749bee702", "status": "completed", "duration_seconds": 0.000418, "event": "Plan execution completed"}
-{"session_id": "direct-test-1", "turn_id": "a92fcb8b-0bee-4c94-9478-283048886e87", "user_message": "Tell me a joke.", "assistant_response": "Here's a business joke for you: Why don't salespeople ever get lost? Because they always know where ...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "direct-test-1", "turn_id": "a92fcb8b-0bee-4c94-9478-283048886e87", "response_length": 203, "sources_count": 0, "event": "Chat message processed successfully"}
-DEBUG: [9a0869de] Handler completed successfully
-DEBUG: [9a0869de] Response status: 200
-DEBUG: [9a0869de] Tasks after request: 5
-DEBUG: [9a0869de] Event loop running: True, closed: False
-{"request_id": "9a0869de", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 21228, "event": "HTTP request completed"}
-DEBUG: [9a0869de] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:62506 - "POST /api/v1/chat HTTP/1.1" 200 OK
+{"error": "RetryError[<Future at 0x1a4c058cfc0 state=finished raised APIConnectionError>]", "event": "Function-calling plan creation failed"}
+{"error": "RetryError[<Future at 0x1a4c058cfc0 state=finished raised APIConnectionError>]", "event": "Function-calling planning failed, falling back to basic planner"}
+{"plan_id": "97de3039-51fb-4de5-84e7-2b10fde7b713", "plan_type": "no_tool", "agent_type": "direct_response", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Basic plan created"}
+{"plan_id": "97de3039-51fb-4de5-84e7-2b10fde7b713", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
+{"plan_id": "97de3039-51fb-4de5-84e7-2b10fde7b713", "execution_id": "53d9e357-4c19-45bf-813e-a904018044d8", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Starting plan execution"}
+{"step_id": "49817eee-3465-4171-9d54-cd4a74035f99", "tool_name": "direct_response", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Executing plan step"}
+{"step_id": "49817eee-3465-4171-9d54-cd4a74035f99", "event": "Direct response step executed successfully"}
+{"plan_id": "97de3039-51fb-4de5-84e7-2b10fde7b713", "execution_id": "53d9e357-4c19-45bf-813e-a904018044d8", "status": "completed", "duration_seconds": 0.001119, "event": "Plan execution completed"}
+{"session_id": "direct-test-1", "turn_id": "526ba146-79d6-42c7-a974-f4844744b1a2", "user_message": "Tell me a joke.", "assistant_response": "Here's a business joke for you: Why don't salespeople ever get lost? Because they always know where ...", "event": "Dev mode: Skipping conversation turn save"}
+{"session_id": "direct-test-1", "turn_id": "526ba146-79d6-42c7-a974-f4844744b1a2", "response_length": 203, "sources_count": 0, "event": "Chat message processed successfully"}
+DEBUG: [c05cd3c8] Handler completed successfully
+DEBUG: [c05cd3c8] Response status: 200
+DEBUG: [c05cd3c8] Tasks after request: 5
+DEBUG: [c05cd3c8] Event loop running: True, closed: False
+{"request_id": "c05cd3c8", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 21705, "event": "HTTP request completed"}
+DEBUG: [c05cd3c8] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:63780 - "POST /api/v1/chat HTTP/1.1" 200 OK

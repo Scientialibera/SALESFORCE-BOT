@@ -8,12 +8,14 @@
         "type": "string",
         "description": "User's natural language query about relationships, connections, or account information"
       },
-      "user_id": {
-        "type": "string",
-        "description": "User ID for RBAC filtering"
+      
+      "accounts_mentioned": {
+        "type": ["array", "null"],
+        "items": {"type": "string"},
+        "description": "List of account names/aliases mentioned in the query, or null if none."
       }
     },
-    "required": ["query", "user_id"]
+  "required": ["query"]
   },
   "agents": ["graph_agent"],
   "metadata": {

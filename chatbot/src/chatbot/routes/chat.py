@@ -19,7 +19,6 @@ from chatbot.models.message import ChatHistory, ConversationTurn, Message, Messa
 from chatbot.models.user import User
 from chatbot.models.rbac import RBACContext
 from chatbot.models.result import FeedbackData
-from chatbot.services.rbac_service import RBACService
 from chatbot.services.planner_service import PlannerService
 from chatbot.services.history_service import HistoryService
 from chatbot.services.feedback_service import FeedbackService
@@ -98,9 +97,6 @@ async def get_current_user(
         logger.info("Authenticating user request", url=str(request.url) if request else "unknown")
         
         # Attempt to build RBAC context from an Authorization header if present
-        from chatbot.app import app_state
-        rbac_service = app_state.rbac_service
-
         # If we have an Authorization header, use it (TODO: full validation)
         if credentials and getattr(credentials, "credentials", None):
             token = credentials.credentials
@@ -109,15 +105,12 @@ async def get_current_user(
                 claims = jose_jwt.get_unverified_claims(token)
             except Exception:
                 claims = {"oid": "user123", "email": "user@example.com", "tid": "tenant123", "roles": ["sales_rep"]}
-
-            if rbac_service:
-                context = await rbac_service.create_rbac_context_from_jwt(claims)
-                # If running in dev mode, persist minimal claims to .env for convenience
-                try:
-                    if settings.dev_mode and claims:
-                        env_path = "./.env"
-                        env_vars = {}
-                        try:
+            # If running in dev mode, persist minimal claims to .env for convenience
+            try:
+                if settings.dev_mode and claims:
+                    env_path = "./.env"
+                    env_vars = {}
+                    try:
                             with open(env_path, "r", encoding="utf-8") as f:
                                 for line in f:
                                     if "=" in line and not line.strip().startswith("#"):
@@ -154,8 +147,7 @@ async def get_current_user(
                         claims = jose_jwt.get_unverified_claims(token)
                     except Exception:
                         claims = {}
-                    if rbac_service:
-                        return await rbac_service.create_rbac_context_from_jwt(claims)
+                    # RBACService removed: just use claims directly
                 except Exception as e:
                     logger.info("DefaultAzureCredential failed in dev mode, falling back to mock claims", error=str(e))
 
@@ -164,7 +156,7 @@ async def get_current_user(
 
         # Final fallback: return a minimal mock context
         logger.info("Using fallback RBAC context")
-        from chatbot.models.rbac import RBACContext, AccessScope
+    from chatbot.models.rbac import RBACContext
         context = RBACContext(
             user_id="user@example.com",
             email="user@example.com",
@@ -286,10 +278,40 @@ async def send_message(
                 rbac_context=user_context,
                 conversation_context=conversation_context,
             )
-            
+
+            # --- Account resolution logic (NEW) ---
+            # Collect all unique accounts_mentioned from all steps
+            all_accounts_mentioned = set()
+            for step in getattr(plan_result, 'steps', []):
+                params = getattr(step, 'parameters', {}) or getattr(getattr(step, 'tool_decision', None), 'parameters', {})
+                accounts = params.get('accounts_mentioned') if params else None
+                if accounts:
+                    all_accounts_mentioned.update(accounts)
+
+            resolved_accounts = []
+            if all_accounts_mentioned:
+                # Only import here to avoid circular import
+                from chatbot.services.account_resolver_service import AccountResolverService
+                account_resolver = AccountResolverService(
+                    aoai_client=None,  # Use DI or global if needed
+                    cache_repository=None,  # Use DI or global if needed
+                )
+                # Use a dummy RBAC context if needed, or pass user_context
+                # This assumes resolve_account can take a list of names
+                resolved = await account_resolver.resolve_account(
+                    ', '.join(all_accounts_mentioned), user_context
+                )
+                resolved_accounts = resolved.get('resolved_accounts', []) if isinstance(resolved, dict) else resolved
+
+            # Patch plan steps to inject resolved_accounts
+            for step in getattr(plan_result, 'steps', []):
+                params = getattr(step, 'parameters', {}) or getattr(getattr(step, 'tool_decision', None), 'parameters', {})
+                if params is not None and 'accounts_mentioned' in params:
+                    params['resolved_accounts'] = resolved_accounts if all_accounts_mentioned else None
+
             # Execute the plan and get results
             execution_result = await planner_service.execute_plan(plan_result, user_context)
-            
+
             # Extract response from execution result
             assistant_response = execution_result.final_output or "I wasn't able to process your request."
             sources = execution_result.execution_metadata.get("sources", [])
@@ -302,7 +324,7 @@ async def send_message(
                 "execution_status": execution_result.status,
                 "timestamp": datetime.utcnow().isoformat()
             }
-            
+
         except Exception as e:
             logger.error(f"Plan execution failed: {e}")
             # Fallback to simple response if plan execution fails
