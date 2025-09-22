@@ -73,21 +73,20 @@ class AccountResolutionFilter:
                         rbac_context=rbac_context
                     )
                     
-                    # Add resolved account information to arguments
+                    # Add resolved account information to arguments (always as lists)
                     if resolution_result.get("resolved_accounts"):
                         resolved_accounts = resolution_result["resolved_accounts"]
                         account_names = [acc.name for acc in resolved_accounts]
                         account_ids = [acc.id for acc in resolved_accounts]
-                        
-                        # Update arguments with resolved account information
+                        # Always pass lists, even if single or empty
                         arguments["resolved_account_names"] = account_names
                         arguments["resolved_account_ids"] = account_ids
                         arguments["account_resolution_confidence"] = resolution_result.get("confidence", 0.0)
-                        
                         logger.info(
-                            "Accounts resolved for function",
+                            "Accounts resolved for function (multi-account)",
                             function=function_name,
-                            resolved_accounts=account_names,
+                            resolved_account_names=account_names,
+                            resolved_account_ids=account_ids,
                             confidence=resolution_result.get("confidence", 0.0)
                         )
                     

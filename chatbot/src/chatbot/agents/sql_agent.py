@@ -60,7 +60,7 @@ class SQLAgent:
             user_query (str): The user's natural language query.
             data_types (list, optional): List of data types to query.
             limit (int, optional): Max number of results.
-            accounts_mentioned (list, optional): List of resolved account IDs to filter the query.
+            accounts_mentioned (list, optional): List of resolved account IDs to filter the query (multi-account supported).
             dev_mode (bool, optional): If True, enables verbose output for debugging.
         Returns:
             str: JSON-encoded query result.
@@ -68,6 +68,11 @@ class SQLAgent:
         tracking_id = None
         try:
             tracking_id = await self.telemetry_service.start_performance_tracking("sql_agent_query")
+            # Ensure accounts_mentioned is always a list (even if None or single)
+            if accounts_mentioned is None:
+                accounts_mentioned = []
+            elif not isinstance(accounts_mentioned, list):
+                accounts_mentioned = [accounts_mentioned]
             # Compose the query using the provided parameters
             query_result = await self.sql_service.execute_natural_language_query(
                 user_query=user_query,
@@ -83,4 +88,3 @@ class SQLAgent:
             if tracking_id:
                 await self.telemetry_service.end_performance_tracking(tracking_id, success=False, error=str(e))
             raise
-            # Removed legacy code fragment

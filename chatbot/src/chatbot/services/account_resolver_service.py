@@ -71,14 +71,13 @@ class AccountResolverService:
     ) -> Dict[str, Any]:
         """
         Resolve account names from user query using TF-IDF and embeddings.
-        
+        Always returns an array of resolved accounts (even if only one or none).
         Args:
             user_query: User's natural language query
             rbac_context: User's RBAC context for filtering allowed accounts
             allowed_accounts: Optional list of allowed accounts (will fetch if not provided)
-            
         Returns:
-            Dictionary with resolution results
+            Dictionary with resolution results. 'resolved_accounts' is always a list.
         """
         try:
             logger.info(
@@ -108,9 +107,9 @@ class AccountResolverService:
                 await self._ensure_tfidf_fitted(allowed_accounts, rbac_context)
             
             # Step 3: Try TF-IDF resolution first (if enabled)
+            tfidf_results = None
             if self.use_tfidf and self.tfidf_filter:
                 tfidf_results = await self._resolve_with_tfidf(user_query, rbac_context)
-                
                 # If TF-IDF gives good results, use them
                 if tfidf_results and tfidf_results.get("confidence", 0) >= self.confidence_threshold:
                     logger.info(
@@ -119,20 +118,24 @@ class AccountResolverService:
                         confidence=tfidf_results["confidence"],
                         resolved_count=len(tfidf_results["resolved_accounts"])
                     )
+                    # Always ensure resolved_accounts is a list
+                    tfidf_results["resolved_accounts"] = list(tfidf_results.get("resolved_accounts") or [])
                     return tfidf_results
             
             # Step 4: Fallback to LLM + embedding approach
             llm_results = await self._resolve_with_llm_embeddings(
                 user_query, rbac_context, allowed_accounts
             )
-            
             # Step 5: Combine results if both methods were used
             if self.use_tfidf and self.tfidf_filter and tfidf_results:
                 combined_results = await self._combine_resolution_results(
                     tfidf_results, llm_results, user_query
                 )
+                # Always ensure resolved_accounts is a list
+                combined_results["resolved_accounts"] = list(combined_results.get("resolved_accounts") or [])
                 return combined_results
-            
+            # Always ensure resolved_accounts is a list
+            llm_results["resolved_accounts"] = list(llm_results.get("resolved_accounts") or [])
             return llm_results
             
         except Exception as e:
@@ -219,7 +222,6 @@ class AccountResolverService:
             resolved_accounts = []
             suggestions = []
             confidences = []
-            
             for acc_dict in similar_accounts:
                 account = Account(
                     id=acc_dict['id'],
@@ -229,10 +231,8 @@ class AccountResolverService:
                     owner_user_id='system',
                     owner_email='system@example.com'
                 )
-                
                 confidence = acc_dict.get('similarity_score', 0.0)
                 confidences.append(confidence)
-                
                 if confidence >= self.confidence_threshold:
                     resolved_accounts.append(account)
                 else:
@@ -242,12 +242,10 @@ class AccountResolverService:
                         "method": "tfidf",
                         "explanation": acc_dict.get('explanation', {})
                     })
-            
             overall_confidence = sum(confidences) / len(confidences) if confidences else 0.0
             requires_disambiguation = len(resolved_accounts) == 0 and len(suggestions) > 1
-            
             result = {
-                "resolved_accounts": resolved_accounts,
+                "resolved_accounts": list(resolved_accounts),
                 "candidates": [user_query],
                 "confidence": overall_confidence,
                 "requires_disambiguation": requires_disambiguation,
@@ -255,7 +253,6 @@ class AccountResolverService:
                 "method": "tfidf",
                 "tfidf_results": similar_accounts
             }
-            
             logger.info(
                 "TF-IDF resolution completed",
                 user_id=rbac_context.user_id,
@@ -263,7 +260,6 @@ class AccountResolverService:
                 suggestions_count=len(suggestions),
                 confidence=overall_confidence
             )
-            
             return result
             
         except Exception as e:
@@ -343,7 +339,7 @@ class AccountResolverService:
             ) if resolution_results else 0.0
             
             result = {
-                "resolved_accounts": high_confidence_matches,
+                "resolved_accounts": list(high_confidence_matches),
                 "candidates": candidate_names,
                 "confidence": overall_confidence,
                 "requires_disambiguation": requires_disambiguation,
@@ -426,7 +422,7 @@ class AccountResolverService:
             combined_confidence = max(primary_confidence, secondary_confidence * 0.8)
             
             result = {
-                "resolved_accounts": resolved_accounts,
+                "resolved_accounts": list(resolved_accounts),
                 "candidates": primary_results.get("candidates", [user_query]),
                 "confidence": combined_confidence,
                 "requires_disambiguation": primary_results.get("requires_disambiguation", False),

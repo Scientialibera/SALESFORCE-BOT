@@ -17,14 +17,32 @@ class GraphAgent:
     def __init__(self, telemetry_service):
         self.telemetry_service = telemetry_service
 
-    async def graph_agent(self, query: str) -> str:
+    async def graph_agent(self, query: str, accounts_mentioned: list = None) -> str:
+        """
+        Executes a relationship-based query against the Cosmos DB graph database.
+        Args:
+            query (str): The user's natural language query.
+            accounts_mentioned (list, optional): List of resolved account IDs to filter the graph query (multi-account supported).
+        Returns:
+            str: JSON-encoded query result.
+        """
         try:
+            if accounts_mentioned is None:
+                accounts_mentioned = []
+            elif not isinstance(accounts_mentioned, list):
+                accounts_mentioned = [accounts_mentioned]
             # Minimal implementation; replace with real logic as needed
-            return json.dumps({"success": True, "message": "Graph agent executed", "query": query})
+            return json.dumps({
+                "success": True,
+                "message": "Graph agent executed",
+                "query": query,
+                "accounts_mentioned": accounts_mentioned
+            })
         except Exception as e:
             logger.error("Graph agent execution failed", error=str(e), query=query)
             return json.dumps({
                 "success": False,
                 "error": f"Graph agent failed: {str(e)}",
-                "query": query
+                "query": query,
+                "accounts_mentioned": accounts_mentioned if 'accounts_mentioned' in locals() else None
             })
