@@ -202,15 +202,12 @@ class DataInitializer:
         entrypoint and remove duplication.
         """
         print("🔁 Uploading prompts and functions via repository uploader...")
-        # Build the list of containers to ensure
+        # Essential containers for simplified architecture
         containers = [
-            settings.cosmos_db.chat_container,
-            settings.cosmos_db.prompts_container,
-            settings.cosmos_db.agent_functions_container,
-            settings.cosmos_db.sql_schema_container,
-            settings.cosmos_db.contracts_text_container,
-            settings.cosmos_db.processed_files_container,
-            settings.cosmos_db.account_resolver_container,
+            settings.cosmos_db.chat_container,        # Unified session/message/feedback storage
+            settings.cosmos_db.prompts_container,     # System prompts
+            settings.cosmos_db.agent_functions_container,  # Function definitions
+            settings.cosmos_db.sql_schema_container,  # Schema metadata
         ]
 
         # Provision Cosmos resources using az CLI (best-effort)
@@ -606,11 +603,12 @@ class DataInitializer:
         # Extract account name from endpoint (https://{account}.documents.azure.com)
         acct = cos_end.replace('https://', '').split('.')[0]
         db_name = settings.cosmos_db.database_name
-        # Gather all container names defined in settings.cosmos_db that end with '_container'
+        # Essential containers for unified Cosmos DB storage
         container_fields = [
-            'chat_container', 'cache_container', 'feedback_container', 'agent_functions_container',
-            'prompts_container', 'sql_schema_container', 'contracts_text_container', 'processed_files_container',
-            'account_resolver_container'
+            'chat_container',  # Unified container for sessions, messages, cache, feedback
+            'agent_functions_container',  # Agent and tool function definitions
+            'prompts_container',  # System prompts
+            'sql_schema_container',  # Database schema information
         ]
         containers = []
         for f in container_fields:
