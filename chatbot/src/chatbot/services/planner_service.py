@@ -28,14 +28,20 @@ logger = structlog.get_logger(__name__)
 
 
 class PlannerService:
-    """Service for managing semantic kernel planning and execution."""
+    """Service for managing planning and execution.
+
+    This service now supports two planning modes:
+    - Function-calling based planning using Azure OpenAI client (recommended)
+    - Basic keyword-based fallback planner (legacy)
+    """
     
     def __init__(
         self,
         kernel: Kernel,
         agent_functions_repo: AgentFunctionsRepository,
         prompts_repo: PromptsRepository,
-        rbac_service: RBACService
+        rbac_service: RBACService,
+        aoai_client=None,
     ):
         """
         Initialize the planner service.
@@ -50,7 +56,9 @@ class PlannerService:
         self.agent_functions_repo = agent_functions_repo
         self.prompts_repo = prompts_repo
         self.rbac_service = rbac_service
-        
+        # Optional Azure OpenAI client for function-calling based planning
+        self.aoai_client = aoai_client
+
         # Configure planners
         self.sequential_planner = None
         self.stepwise_planner = None
@@ -59,13 +67,39 @@ class PlannerService:
     def _configure_planners(self):
         """Configure the available planners."""
         try:
-            # Note: Sequential and Stepwise planners are not available in current Semantic Kernel version
-            # TODO: Update to use current Semantic Kernel planning capabilities
-            logger.info("Planner configuration skipped - using basic kernel functionality")
-            
+            # Try to detect whether the Semantic Kernel planners are available in
+            # the installed `semantic_kernel` package. Older/newer releases may
+            # expose planners under different packages or not include them at all.
+            try:
+                import semantic_kernel as sk
+                sk_version = getattr(sk, "__version__", "<unknown>")
+            except Exception:
+                sk_version = "<not-installed>"
+
+            # Attempt to import planner classes. If these imports succeed we
+            # expose them on the service so other code can opt-in to using
+            # the SK planners. We avoid instantiating planners here because
+            # different SK versions have differing constructor signatures.
+            try:
+                from semantic_kernel.planners import SequentialPlanner, StepwisePlanner  # type: ignore
+                self.sequential_planner = SequentialPlanner
+                self.stepwise_planner = StepwisePlanner
+                logger.info("Semantic Kernel planners detected and available", sk_version=sk_version)
+                return
+            except Exception:
+                # Planners not available in installed SK package
+                logger.info(
+                    "Planner configuration skipped - using basic kernel functionality",
+                    reason="planners-not-available",
+                    sk_version=sk_version,
+                    suggestion="Install a Semantic Kernel distribution that provides planners, e.g. 'pip install semantic-kernel[planners]' or upgrade/downgrade to a compatible version"
+                )
+                return
+
         except Exception as e:
             logger.error("Failed to configure planners", error=str(e))
-            raise
+            # Do not raise here to allow app to continue with basic planner
+            return
     
     async def create_plan(
         self,
@@ -89,20 +123,34 @@ class PlannerService:
         try:
             # Get available functions based on RBAC
             available_functions = await self._get_filtered_functions(rbac_context)
-            
+
             # Get system prompt for planning
             planning_prompt = await self.prompts_repo.get_system_prompt(
                 "planner_system",
                 tenant_id=rbac_context.tenant_id,
                 scenario="general"
             )
-            
+
             # Prepare context for planner
             context_text = self._prepare_context(
                 user_request, conversation_context, available_functions
             )
-            
-            # Create plan using basic logic (since SK planners are not configured)
+
+            # If an Azure OpenAI client is configured, attempt a function-calling planning
+            if self.aoai_client:
+                try:
+                    plan = await self._create_function_call_plan(
+                        user_request, rbac_context, available_functions, planning_prompt
+                    )
+                    logger.info("Plan created via function-calling", plan_id=plan.id, user_id=rbac_context.user_id)
+                    return plan
+                except Exception as e:
+                    logger.warning(
+                        "Function-calling planning failed, falling back to basic planner",
+                        error=str(e)
+                    )
+
+            # Create plan using basic logic (fallback)
             plan = await self._create_basic_plan(
                 user_request, rbac_context, conversation_context, available_functions
             )
@@ -292,6 +340,132 @@ class PlannerService:
                     context_parts.append(f"Assistant: {turn.get('assistant_message', '')}")
         
         return "\n".join(context_parts)
+
+    async def _create_function_call_plan(
+        self,
+        user_request: str,
+        rbac_context: RBACContext,
+        available_functions: List[Dict[str, Any]],
+        planning_prompt: Optional[str] = None,
+    ) -> Plan:
+        """
+        Use Azure OpenAI function-calling to determine which agent/function to run.
+
+        This method constructs a single function schema describing available
+        agent entrypoints (e.g., `sql_agent`, `graph_agent`, `direct_response`) and
+        calls the AOAI client with the user's query. The model's function choice
+        is converted into a Plan.
+        """
+        if not self.aoai_client:
+            raise RuntimeError("AOAI client not configured")
+
+        # Build function schema for the model. Keep it small and focused.
+        functions = []
+        for func in available_functions:
+            # Each function is represented with a minimal JSON schema for parameters
+            functions.append({
+                "name": func["name"],
+                "description": func.get("description", ""),
+                "parameters": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"]
+                }
+            })
+
+        # Add higher level agent choices if not present
+        agent_choices = [f["name"] for f in available_functions]
+        # Ensure fallback agents exist
+        for fallback in ("direct_response", "sql_agent", "graph_agent"):
+            if fallback not in agent_choices:
+                functions.append({
+                    "name": fallback,
+                    "description": "Fallback agent",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"]
+                    }
+                })
+
+        # Create the chat messages payload
+        messages = [
+            {"role": "system", "content": planning_prompt or "You are an orchestrator that chooses which agent to call."},
+            {"role": "user", "content": user_request},
+        ]
+
+        # Call AOAI client with function definitions. Use function calling to get chosen function.
+        try:
+            response = await self.aoai_client.create_chat_completion(
+                messages=messages,
+                functions=functions,
+                function_call="auto",
+                temperature=0.0,
+                max_tokens=256,
+            )
+
+            # The AOAI client returns a dict with choices similar to OpenAI
+            choices = response.get("choices", [])
+            if not choices:
+                raise RuntimeError("No choices returned from AOAI function-calling")
+
+            choice = choices[0]
+            # Check for a function_call field
+            func_call = choice.get("message", {}).get("function_call") if isinstance(choice.get("message"), dict) else None
+            if not func_call:
+                # No function chosen - fallback
+                raise RuntimeError("Model did not select a function via function-calling")
+
+            func_name = func_call.get("name")
+            # Build a simple plan that executes the chosen agent/function
+            if func_name == "direct_response":
+                plan_type = PlanType.NO_TOOL
+                agent_type = "direct_response"
+            elif func_name == "sql_agent":
+                plan_type = PlanType.SQL_ONLY
+                agent_type = "sql_agent"
+            elif func_name == "graph_agent":
+                plan_type = PlanType.GRAPH_ONLY
+                agent_type = "graph_agent"
+            else:
+                # Treat unknown function names as direct agent invocations
+                plan_type = PlanType.HYBRID
+                agent_type = func_name
+
+            plan = Plan(
+                id=str(uuid4()),
+                plan_type=plan_type,
+                query=user_request,
+                user_id=rbac_context.user_id,
+                reasoning=f"Function-calling selected: {func_name}",
+                confidence=1.0,
+                steps=[],
+                status="created",
+            )
+
+            tool_decision = ToolDecision(
+                tool_name=agent_type,
+                confidence=0.9,
+                reasoning=f"Selected by function-calling: {func_name}",
+                parameters={"query": user_request, "user_id": rbac_context.user_id},
+            )
+
+            step = ExecutionStep(
+                step_id=str(uuid4()),
+                step_type="agent_execution",
+                description=f"Execute {agent_type} for: {user_request}",
+                tool_decision=tool_decision,
+                depends_on=[],
+                status=StepStatus.PENDING.value,
+            )
+
+            plan.add_step(step)
+
+            return plan
+
+        except Exception as e:
+            logger.error("Function-calling plan creation failed", error=str(e))
+            raise
     
     def _convert_sk_plan_to_plan(self, sk_plan, rbac_context: RBACContext) -> Plan:
         """

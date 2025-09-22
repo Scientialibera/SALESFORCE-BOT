@@ -252,7 +252,8 @@ async def lifespan(app: FastAPI):
             kernel,
             app_state.agent_functions_repository,
             app_state.prompts_repository,
-            app_state.rbac_service
+            app_state.rbac_service,
+            aoai_client=app_state.aoai_client,
         )
         
         # Initialize planner

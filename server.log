@@ -29,3 +29,13 @@
 {"event": "Graph agent plugin registered with kernel"}
 {"event": "Agents will load functions dynamically from database"}
 {"event": "Application startup completed successfully"}
+{"event": "Shutting down application"}
+{"event": "Azure OpenAI client closed"}
+{"event": "Azure OpenAI client closed"}
+{"event": "Cosmos DB client closed"}
+{"event": "Cosmos DB client closed"}
+{"event": "Gremlin client closed"}
+{"event": "Gremlin client closed"}
+{"event": "Fabric lakehouse client closed"}
+{"event": "Fabric lakehouse client closed"}
+{"event": "Application shutdown completed"}
