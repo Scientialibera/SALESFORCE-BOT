@@ -348,7 +348,7 @@ class DataInitializer:
                 print('  ❌ Failed to upload prompt', fname, 'error:', e)
 
     async def _uploader_upload_functions(self, functions_repo):
-        """Upload function/tool/agent definitions from `scripts/assets/functions`."""
+        """Upload function/tool/agent definitions from `scripts/assets/functions` (one JSON = one function/agent)."""
         print('Uploading function definitions from assets...')
         # Tools
         if ASSETS_FUNCTIONS_TOOLS.exists():
@@ -359,22 +359,21 @@ class DataInitializer:
                 try:
                     with open(path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
-                    for func in data.get('functions', []):
-                        name = func.get('name')
-                        try:
-                            from chatbot.models.result import ToolDefinition
-                            td = ToolDefinition(name=name, description=func.get('description', ''), parameters=func.get('parameters', {}), metadata=func.get('metadata', {}))
-                            try:
-                                await functions_repo.delete_function_definition(name)
-                            except Exception:
-                                pass
-                            agents = func.get('agents') or func.get('metadata', {}).get('agents') or ['sql_agent', 'graph_agent']
-                            await functions_repo.save_function_definition(td, agents=agents)
-                            print('  ✓ Uploaded tool function', name, 'agents=', agents)
-                        except Exception as e:
-                            print('  ❌ Failed to upload tool function', name, 'error:', e)
+                    name = data.get('name')
+                    if not name:
+                        print(f'  ❌ Tool file {fname} missing "name" field, skipping')
+                        continue
+                    from chatbot.models.result import ToolDefinition
+                    td = ToolDefinition(name=name, description=data.get('description', ''), parameters=data.get('parameters', {}), metadata=data.get('metadata', {}))
+                    try:
+                        await functions_repo.delete_function_definition(name)
+                    except Exception:
+                        pass
+                    agents = data.get('agents') or data.get('metadata', {}).get('agents') or ['sql_agent', 'graph_agent']
+                    await functions_repo.save_function_definition(td, agents=agents)
+                    print('  ✓ Uploaded tool function', name, 'agents=', agents)
                 except Exception as e:
-                    print('  ❌ Failed to read tools file', fname, 'error:', e)
+                    print('  ❌ Failed to upload tool file', fname, 'error:', e)
 
         # Agents
         if ASSETS_FUNCTIONS_AGENTS.exists():
@@ -386,20 +385,20 @@ class DataInitializer:
                     with open(path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                     agent_id = data.get('id') or data.get('name')
-                    agents_list = data.get('agents') or [data.get('name')]
+                    if not agent_id:
+                        print(f'  ❌ Agent file {fname} missing "id" or "name" field, skipping')
+                        continue
+                    from chatbot.models.result import ToolDefinition
+                    td = ToolDefinition(name=agent_id, description=data.get('description', ''), parameters=data.get('parameters', {}), metadata=data.get('metadata', {}))
                     try:
-                        from chatbot.models.result import ToolDefinition
-                        td = ToolDefinition(name=agent_id, description=data.get('description', ''), parameters=data.get('parameters', {}), metadata=data.get('metadata', {}))
-                        try:
-                            await functions_repo.delete_function_definition(agent_id)
-                        except Exception:
-                            pass
-                        await functions_repo.save_function_definition(td, agents=agents_list)
-                        print('  ✓ Uploaded agent registration', agent_id, 'agents=', agents_list)
-                    except Exception as e:
-                        print('  ❌ Failed to upload agent registration', agent_id, 'error:', e)
+                        await functions_repo.delete_function_definition(agent_id)
+                    except Exception:
+                        pass
+                    agents_list = data.get('agents') or [data.get('name')]
+                    await functions_repo.save_function_definition(td, agents=agents_list)
+                    print('  ✓ Uploaded agent registration', agent_id, 'agents=', agents_list)
                 except Exception as e:
-                    print('  ❌ Failed to read agents file', fname, 'error:', e)
+                    print('  ❌ Failed to upload agent file', fname, 'error:', e)
     
     async def upload_dummy_graph_data(self):
         """Upload dummy account and relationship data to Gremlin graph."""

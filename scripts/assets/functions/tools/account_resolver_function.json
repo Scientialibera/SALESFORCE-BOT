@@ -2,6 +2,7 @@
   "id": "account_resolver_function",
   "agent_type": "hybrid",
   "function_name": "resolve_account_context",
+  "name": "resolve_account_context",
   "description": "Resolve ambiguous account references and provide contextual information",
   "parameters": {
     "type": "object",
