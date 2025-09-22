@@ -1,3 +1,36 @@
+"""Compatibility shim for ChatHistoryRepository.
+
+Delegates to `app_state.unified_data_service` to manage chat sessions.
+"""
+from typing import Optional, List
+
+from chatbot.app import app_state
+from chatbot.models.message import ChatHistory
+
+
+class ChatHistoryRepository:
+    async def create_chat_session(self, user_id: str, title: str = None, chat_id: str = None, metadata: dict = None) -> ChatHistory:
+        uds = getattr(app_state, "unified_data_service", None)
+        if not uds:
+            raise RuntimeError("Unified data service not available")
+        # create_chat_session expects an RBACContext in the new API; pass a simple shim
+        class Ctx:
+            def __init__(self, uid):
+                self.user_id = uid
+        return await uds.create_chat_session(Ctx(user_id), chat_id=chat_id, title=title, metadata=metadata)
+
+    async def get_chat_history(self, chat_id: str, user_id: str) -> Optional[ChatHistory]:
+        uds = getattr(app_state, "unified_data_service", None)
+        if not uds:
+            return None
+        # call underlying client directly
+        return await uds.get_chat_context(chat_id, type('Ctx', (), {'user_id': user_id}), max_turns=1000)
+
+    async def add_turn_to_chat(self, chat_id: str, user_id: str, turn) -> bool:
+        uds = getattr(app_state, "unified_data_service", None)
+        if not uds:
+            return False
+        return await uds.add_conversation_turn(chat_id, turn.user_message, turn.assistant_message, type('Ctx', (), {'user_id': user_id}))
 """
 Chat history repository for conversation management.
 
@@ -70,24 +103,26 @@ class ChatHistoryRepository:
         )
         
         # Store in Cosmos DB
+        # Use Pydantic's JSON-safe model dump to ensure datetimes are ISO strings
         chat_doc = {
             "id": chat_id,
             "user_id": user_id,
-            "chat_data": chat_history.model_dump(),
+            "chat_data": chat_history.model_dump(mode="json"),
             "doc_type": "chat_session",
             "created_at": chat_history.created_at.isoformat(),
             "updated_at": chat_history.updated_at.isoformat(),
         }
-        
-        await self.client.create_item(self.container_name, chat_doc)
-        
+
+        # Use user_id as the partition key so reads by user_id succeed
+        await self.client.create_item(self.container_name, chat_doc, partition_key="/user_id")
+
         logger.info(
             "Created chat session",
             chat_id=chat_id,
             user_id=user_id,
             title=title,
         )
-        
+
         return chat_history
     
     async def get_chat_history(self, chat_id: str, user_id: str) -> Optional[ChatHistory]:
@@ -102,18 +137,41 @@ class ChatHistoryRepository:
             Chat history if found and user has access
         """
         try:
+            # First, try reading with the user's partition key (most secure path)
             doc = await self.client.read_item(
                 container_name=self.container_name,
                 item_id=chat_id,
                 partition_key_value=user_id,
             )
-            
-            if doc and doc.get("user_id") == user_id:
+
+            # If not found, try reading by id partition fallback
+            if doc is None:
+                doc = await self.client.read_item(
+                    container_name=self.container_name,
+                    item_id=chat_id,
+                    partition_key_value=chat_id,
+                )
+
+            if doc:
                 chat_data = doc.get("chat_data", {})
-                return ChatHistory(**chat_data)
-            
+                # chat_data may be a JSON string if stored with model_dump(mode="json")
+                if isinstance(chat_data, str):
+                    try:
+                        # pydantic v2 helper to validate from json
+                        return ChatHistory.model_validate_json(chat_data)
+                    except Exception:
+                        # Fallback to loading dict then constructing model
+                        try:
+                            parsed = json.loads(chat_data)
+                            return ChatHistory(**parsed)
+                        except Exception:
+                            logger.error("Failed to parse chat_data JSON", chat_id=chat_id)
+                            return None
+                else:
+                    return ChatHistory(**chat_data)
+
             return None
-            
+
         except Exception as e:
             logger.error("Failed to get chat history", chat_id=chat_id, user_id=user_id, error=str(e))
             return None
@@ -131,16 +189,18 @@ class ChatHistoryRepository:
         try:
             chat_history.updated_at = datetime.utcnow()
             
+            # Ensure chat_data is JSON serializable (datetimes -> ISO strings)
             chat_doc = {
                 "id": chat_history.chat_id,
                 "user_id": chat_history.user_id,
-                "chat_data": chat_history.model_dump(),
+                "chat_data": chat_history.model_dump(mode="json"),
                 "doc_type": "chat_session",
                 "created_at": chat_history.created_at.isoformat(),
                 "updated_at": chat_history.updated_at.isoformat(),
             }
             
-            await self.client.upsert_item(self.container_name, chat_doc)
+            # Upsert using user_id as partition key
+            await self.client.upsert_item(self.container_name, chat_doc, partition_key="/user_id")
             
             logger.debug(
                 "Updated chat history",
@@ -238,7 +298,17 @@ class ChatHistoryRepository:
             chat_sessions = []
             for doc in docs:
                 chat_data = doc.get("chat_data", {})
-                chat_sessions.append(ChatHistory(**chat_data))
+                if isinstance(chat_data, str):
+                    try:
+                        chat_sessions.append(ChatHistory.model_validate_json(chat_data))
+                    except Exception:
+                        try:
+                            parsed = json.loads(chat_data)
+                            chat_sessions.append(ChatHistory(**parsed))
+                        except Exception:
+                            logger.warning("Failed to parse chat_data for session", chat_id=doc.get('id'))
+                else:
+                    chat_sessions.append(ChatHistory(**chat_data))
             
             logger.debug(
                 "Retrieved user chat sessions",

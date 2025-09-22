@@ -15,7 +15,7 @@ from chatbot.clients.gremlin_client import GremlinClient
 from chatbot.clients.fabric_client import FabricLakehouseClient
 from chatbot.models.rbac import RBACContext
 from chatbot.models.result import QueryResult
-from chatbot.services.cache_service import CacheService
+from chatbot.services.unified_service import UnifiedDataService
 
 logger = structlog.get_logger(__name__)
 
@@ -26,7 +26,7 @@ class GraphService:
     def __init__(
         self,
         gremlin_client: GremlinClient,
-        cache_service: CacheService,
+        cache_service: UnifiedDataService,
         fabric_client: Optional[FabricLakehouseClient] = None,
         max_results: int = 100,
         max_traversal_depth: int = 5
@@ -42,7 +42,7 @@ class GraphService:
             max_traversal_depth: Maximum depth for graph traversals
         """
         self.gremlin_client = gremlin_client
-        self.cache_service = cache_service
+        self.unified_data_service = cache_service
         self.fabric_client = fabric_client
         self.max_results = max_results
         self.max_traversal_depth = max_traversal_depth
@@ -78,7 +78,7 @@ class GraphService:
             
             # Check cache first
             cache_key = f"relationships:{account_id}:{hash(str(relationship_types))}"
-            cached_result = await self.cache_service.get_query_result(
+            cached_result = await self.unified_data_service.get_query_result(
                 cache_key, rbac_context, "graph"
             )
             if cached_result:
@@ -111,7 +111,7 @@ class GraphService:
                 execution_time_ms=execution_time
             )
             
-            await self.cache_service.set_query_result(
+            await self.unified_data_service.set_query_result(
                 cache_key, query_result.__dict__, rbac_context, "graph"
             )
             

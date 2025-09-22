@@ -17,7 +17,7 @@ from chatbot.clients.aoai_client import AzureOpenAIClient
 from chatbot.models.rbac import RBACContext
 from chatbot.models.result import QueryResult
 from chatbot.repositories.sql_schema_repository import SQLSchemaRepository
-from chatbot.services.cache_service import CacheService
+from chatbot.services.unified_service import UnifiedDataService
 from chatbot.services.telemetry_service import TelemetryService
 from chatbot.config.settings import FabricLakehouseSettings
 
@@ -31,7 +31,7 @@ class SQLService:
         self,
         aoai_client: AzureOpenAIClient,
         schema_repository: SQLSchemaRepository,
-        cache_service: CacheService,
+        unified_data_service: UnifiedDataService,
         telemetry_service: TelemetryService,
         settings: FabricLakehouseSettings,
         dev_mode: bool = False
@@ -49,7 +49,7 @@ class SQLService:
         """
         self.aoai_client = aoai_client
         self.schema_repository = schema_repository
-        self.cache_service = cache_service
+        self.unified_data_service = unified_data_service
         self.telemetry_service = telemetry_service
         self.settings = settings
         self.dev_mode = dev_mode
@@ -129,7 +129,7 @@ class SQLService:
             
             # Step 3: Check cache if enabled
             if use_cache:
-                cached_result = await self.cache_service.get_query_result(
+                cached_result = await self.unified_data_service.get_query_result(
                     filtered_query, rbac_context, "sql"
                 )
                 if cached_result:
@@ -141,7 +141,7 @@ class SQLService:
             
             # Step 5: Cache the result if successful
             if result.success and use_cache:
-                await self.cache_service.set_query_result(
+                await self.unified_data_service.set_query_result(
                     filtered_query, result.__dict__, rbac_context, "sql"
                 )
             

@@ -13,7 +13,7 @@ import structlog
 from chatbot.clients.aoai_client import AOAIClient
 from chatbot.clients.cosmos_client import CosmosDBClient
 from chatbot.models.rbac import RBACContext
-from chatbot.services.cache_service import CacheService
+from chatbot.services.unified_service import UnifiedDataService
 from chatbot.utils.embeddings import EmbeddingUtils
 
 logger = structlog.get_logger(__name__)
@@ -26,7 +26,7 @@ class RetrievalService:
         self,
         aoai_client: AOAIClient,
         cosmos_client: CosmosDBClient,
-        cache_service: CacheService,
+        cache_service: UnifiedDataService,
         embedding_utils: EmbeddingUtils
     ):
         """
@@ -40,7 +40,7 @@ class RetrievalService:
         """
         self.aoai_client = aoai_client
         self.cosmos_client = cosmos_client
-        self.cache_service = cache_service
+        self.unified_data_service = cache_service
         self.embedding_utils = embedding_utils
         
         # Configuration
@@ -73,7 +73,7 @@ class RetrievalService:
         try:
             # Check cache first
             cache_key = f"semantic_search:{query}:{rbac_context.user_id}:{top_k}"
-            cached_results = await self.cache_service.get(cache_key)
+            cached_results = await self.unified_data_service.get(cache_key)
             if cached_results:
                 logger.debug(
                     "Semantic search cache hit",
@@ -114,10 +114,10 @@ class RetrievalService:
                     processed_results.append(processed_result)
             
             # Cache results
-            await self.cache_service.set(
-                cache_key, 
-                processed_results, 
-                ttl_seconds=300  # 5 minutes
+            await self.unified_data_service.set(
+                cache_key,
+                processed_results,
+                ttl_seconds=300,
             )
             
             logger.info(

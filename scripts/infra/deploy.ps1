@@ -49,13 +49,11 @@ az config set core.only_show_errors=true --only-show-errors | Out-Null
 # Providers & extensions we need
 Ensure-Provider 'Microsoft.Web'                 # Static Web Apps
 Ensure-Provider 'Microsoft.CognitiveServices'   # AOAI
-if ($Mode -eq 'Full') {
-  Ensure-Provider 'Microsoft.DocumentDB'        # Cosmos DB
-  Ensure-Provider 'Microsoft.Cdn'               # Azure Front Door Std/Premium
-  Ensure-Provider 'Microsoft.ApiManagement'     # APIM
-  Ensure-Provider 'Microsoft.Network'           # WAF policy attach
-  Ensure-Ext 'afd'
-}
+Ensure-Provider 'Microsoft.DocumentDB'        # Cosmos DB
+Ensure-Provider 'Microsoft.Cdn'               # Azure Front Door Std/Premium
+Ensure-Provider 'Microsoft.ApiManagement'     # APIM
+Ensure-Provider 'Microsoft.Network'           # WAF policy attach
+Ensure-Ext 'afd'
 # Container Apps env is optional infra; create if possible but don't fail hard
 Ensure-Provider 'Microsoft.App'
 Ensure-Ext 'containerapp'

@@ -13,7 +13,7 @@ from chatbot.agents.filters.account_resolver_filter import AccountResolverFilter
 from chatbot.clients.aoai_client import AzureOpenAIClient
 from chatbot.models.account import Account
 from chatbot.models.rbac import RBACContext
-from chatbot.repositories.cache_repository import CacheRepository
+from chatbot.services.unified_service import UnifiedDataService
 from chatbot.utils.embeddings import compute_cosine_similarity, get_embedding
 
 logger = structlog.get_logger(__name__)
@@ -25,7 +25,7 @@ class AccountResolverService:
     def __init__(
         self,
         aoai_client: AzureOpenAIClient,
-        cache_repository: CacheRepository,
+        unified_data_service: UnifiedDataService,
         confidence_threshold: float = 0.8,
         max_suggestions: int = 3,
         tfidf_threshold: float = 0.3,
@@ -43,7 +43,7 @@ class AccountResolverService:
             use_tfidf: Whether to use TF-IDF filtering (preferred method)
         """
         self.aoai_client = aoai_client
-        self.cache_repository = cache_repository
+        self.unified_data_service = unified_data_service
         self.confidence_threshold = confidence_threshold
         self.max_suggestions = max_suggestions
         self.use_tfidf = use_tfidf
@@ -157,7 +157,7 @@ class AccountResolverService:
         try:
             # Check if we need to refit (cache-based check)
             cache_key = f"tfidf_fitted:{rbac_context.user_id}"
-            is_fitted = await self.cache_repository.get(cache_key)
+            is_fitted = await self.unified_data_service.get(cache_key)
             
             if not is_fitted:
                 logger.info("Fitting TF-IDF filter", account_count=len(allowed_accounts))
@@ -179,7 +179,7 @@ class AccountResolverService:
                 self.tfidf_filter.fit(account_dicts)
                 
                 # Cache that we've fitted (expires in 1 hour)
-                await self.cache_repository.set(cache_key, True, ttl_seconds=3600)
+                await self.unified_data_service.set(cache_key, True, ttl_seconds=3600)
                 
                 logger.info("TF-IDF filter fitted successfully")
                 

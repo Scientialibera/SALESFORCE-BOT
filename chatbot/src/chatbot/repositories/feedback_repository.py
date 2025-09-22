@@ -1,3 +1,32 @@
+"""Compatibility shim for FeedbackRepository.
+
+Delegates feedback storage to `app_state.unified_data_service`.
+"""
+from typing import Optional
+
+from chatbot.app import app_state
+from chatbot.models.result import FeedbackData
+
+
+class FeedbackRepository:
+    async def save_feedback(self, turn_id: str, user_id: str, rating: int, comment: str = None, metadata: dict = None) -> str:
+        uds = getattr(app_state, "unified_data_service", None)
+        if not uds:
+            raise RuntimeError("Unified data service not available")
+        return await uds.submit_feedback(turn_id, user_id, rating, comment=comment, metadata=metadata)
+
+    async def get_feedback_by_turn(self, turn_id: str) -> Optional[FeedbackData]:
+        uds = getattr(app_state, "unified_data_service", None)
+        if not uds:
+            return None
+        return await uds.get_feedback_for_turn(turn_id)
+
+    async def delete_feedback(self, feedback_id: str) -> bool:
+        uds = getattr(app_state, "unified_data_service", None)
+        if not uds:
+            return False
+        # no rbac context available here; rely on caller
+        return await uds.delete_feedback(feedback_id, type('Ctx', (), {'user_id': None, 'roles': []}))
 """
 Repository for managing user feedback on chat responses.
 
@@ -76,7 +105,8 @@ class FeedbackRepository:
                 "metadata": metadata or {},
                 "created_at": datetime.utcnow().isoformat(),
             }
-            
+
+            # Use user_id as the partition key so feedback is colocated with user data
             await container.create_item(feedback_data)
             
             logger.info(
@@ -113,7 +143,7 @@ class FeedbackRepository:
             
             query = "SELECT * FROM c WHERE c.turn_id = @turn_id"
             parameters = [{"name": "@turn_id", "value": turn_id}]
-            
+
             items = []
             async for item in container.query_items(
                 query=query,
@@ -178,7 +208,8 @@ class FeedbackRepository:
             feedback_list = []
             async for item in container.query_items(
                 query=query,
-                parameters=parameters
+                parameters=parameters,
+                partition_key=user_id
             ):
                 feedback_list.append(FeedbackData(
                     feedback_id=item["id"],
@@ -309,9 +340,23 @@ class FeedbackRepository:
         try:
             container = await self._get_container()
             
+            # We don't know the partition key (user_id) from feedback_id alone,
+            # so query to find the item and its partition value, then delete.
+            query = "SELECT c.id, c.user_id FROM c WHERE c.id = @id"
+            parameters = [{"name": "@id", "value": feedback_id}]
+            items = []
+            async for it in container.query_items(query=query, parameters=parameters):
+                items.append(it)
+
+            if not items:
+                logger.warning("Feedback not found for deletion", feedback_id=feedback_id)
+                return False
+
+            partition_value = items[0].get("user_id") or "system"
+
             await container.delete_item(
                 item=feedback_id,
-                partition_key=feedback_id
+                partition_key=partition_value
             )
             
             logger.info("Deleted feedback", feedback_id=feedback_id)

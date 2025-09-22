@@ -205,14 +205,12 @@ class DataInitializer:
         # Build the list of containers to ensure
         containers = [
             settings.cosmos_db.chat_container,
-            settings.cosmos_db.cache_container,
             settings.cosmos_db.prompts_container,
             settings.cosmos_db.agent_functions_container,
             settings.cosmos_db.sql_schema_container,
             settings.cosmos_db.contracts_text_container,
             settings.cosmos_db.processed_files_container,
             settings.cosmos_db.account_resolver_container,
-            settings.cosmos_db.feedback_container,
         ]
 
         # Provision Cosmos resources using az CLI (best-effort)

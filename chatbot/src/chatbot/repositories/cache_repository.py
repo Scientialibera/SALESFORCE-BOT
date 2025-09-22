@@ -1,3 +1,37 @@
+"""Compatibility shim for CacheRepository used by older callers.
+
+This minimal adapter delegates to the UnifiedDataService stored on
+`app_state.unified_data_service`. It exists to avoid changing many
+callsites during the transition.
+"""
+from typing import Any, Optional
+
+from chatbot.app import app_state
+
+
+class CacheRepository:
+    async def get(self, key: str) -> Optional[Any]:
+        uds = getattr(app_state, "unified_data_service", None)
+        if not uds:
+            return None
+        # UnifiedDataService exposes get_query_result for keyed query cache
+        return await uds.get_query_result(key, None) if hasattr(uds, "get_query_result") else None
+
+    async def set(self, key: str, value: Any, ttl: int) -> bool:
+        uds = getattr(app_state, "unified_data_service", None)
+        if not uds:
+            return False
+        return await uds.set_query_result(key, value, None, ttl_seconds=ttl)
+
+    async def delete(self, key: str) -> bool:
+        uds = getattr(app_state, "unified_data_service", None)
+        if not uds:
+            return False
+        # Best-effort: delete item by id
+        try:
+            return await uds._client.delete_item(container_name=uds._container, item_id=key, partition_key_value=uds._container)
+        except Exception:
+            return False
 """
 Repository for caching operations using Azure Cosmos DB TTL.
 
@@ -39,6 +73,35 @@ class CacheRepository:
             database = await self.cosmos_client.get_database_client(self.database_name)
             self._container = database.get_container_client(self.container_name)
         return self._container
+
+    def _partition_for_key(self, key: str) -> str:
+        """
+        Derive the user partition key value from cache key when storing
+        cache items in a shared container that uses `/user_id` as the
+        partition key. Keys created by the service include the user id in
+        predictable positions for query results and permissions.
+
+        Examples:
+        - `query:sql:user:alice@example.com:<hash>` -> `alice@example.com`
+        - `permissions:alice@example.com` -> `alice@example.com`
+        - `embedding:<hash>` -> `system` (shared/system partition)
+
+        Returns a partition key value string.
+        """
+        try:
+            if key.startswith("query:"):
+                # expected format: query:{type}:user:{user_id}:{hash}
+                parts = key.split(":")
+                # defensive check
+                if len(parts) >= 4 and parts[2] == "user":
+                    return parts[3]
+            if key.startswith("permissions:"):
+                # permissions:{user_id}
+                return key.split(":", 1)[1]
+        except Exception:
+            pass
+        # default to a system partition for keys that are not per-user
+        return "system"
     
     async def get(self, key: str) -> Optional[Any]:
         """
@@ -50,14 +113,20 @@ class CacheRepository:
         Returns:
             Cached value or None if not found/expired
         """
+        container = await self._get_container()
+        partition_value = self._partition_for_key(key)
+
+        # Try to read directly using the derived partition key. If any error occurs
+        # (not only ResourceNotFound), fall back to a cross-partition query to find
+        # the item. This makes the get operation more robust to partitioning/schema
+        # mismatches in the container.
         try:
-            container = await self._get_container()
-            
+            # Read by id with the derived partition key value
             item = await container.read_item(
                 item=key,
-                partition_key=key
+                partition_key=partition_value
             )
-            
+
             # Check if item has expired (additional safety check)
             if "expires_at" in item:
                 expires_at = datetime.fromisoformat(item["expires_at"])
@@ -65,11 +134,32 @@ class CacheRepository:
                     # Item has expired, delete it
                     await self.delete(key)
                     return None
-            
+
             logger.debug("Cache hit", key=key)
             return item.get("value")
-            
-        except cosmos_exceptions.CosmosResourceNotFoundError:
+
+        except Exception:
+            # Fallback: attempt cross-partition query to find the item by id
+            try:
+                # Select the entire document as 'c' to avoid issues with reserved
+                # keywords like 'value' in Cosmos SQL. Extract the document and return
+                # its 'value' property.
+                query = "SELECT c FROM c WHERE c.id = @id"
+                parameters = [{"name": "@id", "value": key}]
+                async for row in container.query_items(query=query, parameters=parameters):
+                    item = row.get("c") if isinstance(row, dict) else row
+                    if not item:
+                        continue
+                    if "expires_at" in item:
+                        expires_at = datetime.fromisoformat(item["expires_at"])
+                        if datetime.utcnow() > expires_at:
+                            await self.delete(key)
+                            return None
+                    logger.debug("Cache hit (cross-partition)", key=key)
+                    return item.get("value")
+            except Exception as e:
+                logger.debug("Cross-partition cache query failed", key=key, error=str(e))
+
             logger.debug("Cache miss", key=key)
             return None
         except Exception as e:
@@ -95,17 +185,21 @@ class CacheRepository:
         """
         try:
             container = await self._get_container()
-            
+
             expires_at = datetime.utcnow() + timedelta(seconds=ttl_seconds)
-            
+
+            partition_value = self._partition_for_key(key)
+
             cache_item = {
                 "id": key,
+                "user_id": partition_value,
                 "value": value,
                 "created_at": datetime.utcnow().isoformat(),
                 "expires_at": expires_at.isoformat(),
                 "ttl": ttl_seconds,  # Cosmos DB TTL field
             }
-            
+
+            # Upsert using derived partition value (container partition is `/user_id` in unified schema)
             await container.upsert_item(cache_item)
             
             logger.debug(
@@ -138,10 +232,11 @@ class CacheRepository:
         """
         try:
             container = await self._get_container()
-            
+            partition_value = self._partition_for_key(key)
+
             await container.delete_item(
                 item=key,
-                partition_key=key
+                partition_key=partition_value
             )
             
             logger.debug("Cache deleted", key=key)

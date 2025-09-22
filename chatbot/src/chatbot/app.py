@@ -27,21 +27,16 @@ from chatbot.clients.gremlin_client import GremlinClient
 from chatbot.clients.fabric_client import FabricLakehouseClient
 
 # Import repositories
-from chatbot.repositories.chat_history_repository import ChatHistoryRepository
+# Chat/history/cache/feedback repositories removed - unified service uses Cosmos client directly
 from chatbot.repositories.agent_functions_repository import AgentFunctionsRepository
-from chatbot.repositories.cache_repository import CacheRepository
-from chatbot.repositories.feedback_repository import FeedbackRepository
 from chatbot.repositories.prompts_repository import PromptsRepository
 from chatbot.repositories.sql_schema_repository import SQLSchemaRepository
 
 # Import services
 from chatbot.services.rbac_service import RBACService
 from chatbot.services.account_resolver_service import AccountResolverService
-from chatbot.services.cache_service import CacheService
 from chatbot.services.sql_service import SQLService
-from chatbot.services.feedback_service import FeedbackService
 from chatbot.services.graph_service import GraphService
-from chatbot.services.history_service import HistoryService
 from chatbot.services.retrieval_service import RetrievalService
 from chatbot.services.telemetry_service import TelemetryService
 
@@ -53,7 +48,6 @@ from chatbot.agents.graph_agent import GraphAgent
 from chatbot.utils.embeddings import EmbeddingUtils
 
 # Import routes
-from chatbot.routes.health import router as health_router
 from chatbot.routes.chat import router as chat_router
 
 # Configure structured logging
@@ -82,27 +76,27 @@ class ApplicationState:
         self.fabric_client: FabricLakehouseClient = None
         
         # Repositories
-        self.chat_history_repository: ChatHistoryRepository = None
-        self.agent_functions_repository: AgentFunctionsRepository = None
-        self.cache_repository: CacheRepository = None
-        self.feedback_repository: FeedbackRepository = None
-        self.prompts_repository: PromptsRepository = None
-        self.sql_schema_repository: SQLSchemaRepository = None
-        
+        self.chat_history_repository = None
+        self.agent_functions_repository = None
+        self.cache_repository = None
+        self.feedback_repository = None
+        self.prompts_repository = None
+        self.sql_schema_repository = None
+
         # Services
-        self.rbac_service: RBACService = None
-        self.account_resolver_service: AccountResolverService = None
-        self.cache_service: CacheService = None
-        self.sql_service: SQLService = None
-        self.feedback_service: FeedbackService = None
-        self.graph_service: GraphService = None
-        self.history_service: HistoryService = None
-        self.retrieval_service: RetrievalService = None
-        self.telemetry_service: TelemetryService = None
-        
+        self.rbac_service = None
+        self.account_resolver_service = None
+        self.cache_service = None
+        self.sql_service = None
+        self.feedback_service = None
+        self.graph_service = None
+        self.history_service = None
+        self.retrieval_service = None
+        self.telemetry_service = None
+
         # Agents
-        self.sql_agent: SQLAgent = None
-        self.graph_agent: GraphAgent = None
+        self.sql_agent = None
+        self.graph_agent = None
 
 
 # Global application state
@@ -143,25 +137,17 @@ async def lifespan(app: FastAPI):
         
         # Initialize repositories
         logger.info("Initializing data repositories")
-        app_state.chat_history_repository = ChatHistoryRepository(
-            app_state.cosmos_client,
-            settings.cosmos_db,
-        )
+        app_state.chat_history_repository = None
         app_state.agent_functions_repository = AgentFunctionsRepository(
             app_state.cosmos_client,
             settings.cosmos_db.database_name,
             settings.cosmos_db.agent_functions_container,
         )
-        app_state.cache_repository = CacheRepository(
-            app_state.cosmos_client,
-            settings.cosmos_db.database_name,
-            settings.cosmos_db.cache_container,
-        )
-        app_state.feedback_repository = FeedbackRepository(
-            app_state.cosmos_client,
-            settings.cosmos_db.database_name,
-            settings.cosmos_db.feedback_container,
-        )
+        # Use unified chat container for chat, cache and feedback to colocate
+        # per-user data and simplify partitioning. Repositories will store
+        # a `user_id` field and use `/user_id` as the partition key.
+        app_state.cache_repository = None
+        app_state.feedback_repository = None
         app_state.prompts_repository = PromptsRepository(
             app_state.cosmos_client,
             settings.cosmos_db.database_name,
@@ -176,7 +162,7 @@ async def lifespan(app: FastAPI):
         
         # Initialize services
         logger.info("Initializing application services")
-        
+
         # Initialize RBAC service with settings. In dev_mode, disable enforcement to bypass RBAC for testing.
         rbac_settings = settings.rbac
         if settings.dev_mode:
@@ -194,47 +180,60 @@ async def lifespan(app: FastAPI):
 
         app_state.rbac_service = RBACService(rbac_settings)
         logger.info("Initialized RBAC service", enforce_rbac=rbac_settings.enforce_rbac, admin_users=len(rbac_settings.admin_users or []))
-        
-        # Initialize account resolver service
-        app_state.account_resolver_service = AccountResolverService(
-            app_state.aoai_client,
-            app_state.cache_repository,
-            confidence_threshold=settings.account_resolver.confidence_threshold,
-            max_suggestions=settings.account_resolver.max_candidates,
-            tfidf_threshold=0.3,  # Default value since not in settings
-            use_tfidf=True,  # Default value since not in settings
-        )
-        logger.info("Account resolver service initialized", confidence_threshold=settings.account_resolver.confidence_threshold)
-        
-        app_state.cache_service = CacheService(app_state.cache_repository)
+
+        # Compose a unified facade that exposes cache/history/feedback APIs and
+        # colocates data in the chat container. We keep the original
+        # per-service attributes for backwards compatibility, but also set
+        # `unified_data_service` for convenience.
+        from chatbot.services.unified_service import UnifiedDataService
+        unified = UnifiedDataService(app_state.cosmos_client, settings.cosmos_db)
+        # assign the unified service to app state
+        app_state.unified_data_service = unified
+
+
         app_state.telemetry_service = TelemetryService(
             app_state.cosmos_client,
             enable_detailed_tracking=settings.debug
         )
+
+        # Initialize account resolver service using unified service for cache ops
+        app_state.account_resolver_service = AccountResolverService(
+            app_state.aoai_client,
+            app_state.unified_data_service,
+            confidence_threshold=settings.account_resolver.confidence_threshold,
+            max_suggestions=settings.account_resolver.max_candidates,
+            tfidf_threshold=0.3,
+            use_tfidf=True,
+        )
+        logger.info("Account resolver service initialized", confidence_threshold=settings.account_resolver.confidence_threshold)
+
         app_state.sql_service = SQLService(
             app_state.aoai_client,
             app_state.sql_schema_repository,
-            app_state.cache_service,
+            app_state.unified_data_service,
             app_state.telemetry_service,
             settings.fabric_lakehouse,
             dev_mode=settings.dev_mode
         )
-        app_state.feedback_service = FeedbackService(app_state.feedback_repository)
+
+        # legacy services removed; unified_data_service provides the functionality
+        app_state.feedback_service = None
+        app_state.history_service = None
+
         app_state.graph_service = GraphService(
             app_state.gremlin_client,
-            app_state.cache_service,
+            app_state.unified_data_service,
             app_state.fabric_client
         )
-        app_state.history_service = HistoryService(app_state.chat_history_repository)
-        
+
         # Initialize embedding utils
         from chatbot.utils.embeddings import EmbeddingUtils
         embedding_utils = EmbeddingUtils()
-        
+
         app_state.retrieval_service = RetrievalService(
             app_state.aoai_client,
             app_state.cosmos_client,
-            app_state.cache_service,
+            app_state.unified_data_service,
             embedding_utils
         )
         
@@ -460,21 +459,13 @@ def configure_middleware(app: FastAPI) -> None:
 
 def configure_routes(app: FastAPI) -> None:
     """Configure application routes."""
-    
-    # Health check routes (no auth required)
-    app.include_router(
-        health_router,
-        prefix="/health",
-        tags=["health"],
-    )
-    
     # Chat API routes (auth required)
     app.include_router(
         chat_router,
         prefix=settings.api_prefix,
         tags=["chat"],
     )
-    
+
     logger.info("Configured application routes", api_prefix=settings.api_prefix)
 
 
@@ -562,11 +553,15 @@ def get_fabric_client() -> FabricLakehouseClient:
 
 
 # Dependency injection functions for repositories
-def get_chat_history_repository() -> ChatHistoryRepository:
-    """Get chat history repository dependency."""
-    if not app_state.chat_history_repository:
-        raise HTTPException(status_code=503, detail="Chat history repository not available")
-    return app_state.chat_history_repository
+def get_chat_history_repository():
+    """Get chat history repository dependency (deprecated).
+
+    Return unified_data_service which manages chat sessions.
+    """
+    uds = getattr(app_state, "unified_data_service", None)
+    if not uds:
+        raise HTTPException(status_code=503, detail="Unified data service not available")
+    return uds
 
 
 def get_agent_functions_repository() -> AgentFunctionsRepository:
@@ -576,18 +571,22 @@ def get_agent_functions_repository() -> AgentFunctionsRepository:
     return app_state.agent_functions_repository
 
 
-def get_cache_repository() -> CacheRepository:
-    """Get cache repository dependency."""
-    if not app_state.cache_repository:
-        raise HTTPException(status_code=503, detail="Cache repository not available")
-    return app_state.cache_repository
+def get_cache_repository():
+    """Get cache repository dependency (deprecated).
+
+    The unified_data_service stores cache entries; return unified for callers
+    that still request a repository object.
+    """
+    if not getattr(app_state, "unified_data_service", None):
+        raise HTTPException(status_code=503, detail="Unified data service not available")
+    return app_state.unified_data_service
 
 
-def get_feedback_repository() -> FeedbackRepository:
-    """Get feedback repository dependency."""
-    if not app_state.feedback_repository:
-        raise HTTPException(status_code=503, detail="Feedback repository not available")
-    return app_state.feedback_repository
+def get_feedback_repository():
+    """Get feedback repository dependency (deprecated)."""
+    if not getattr(app_state, "unified_data_service", None):
+        raise HTTPException(status_code=503, detail="Unified data service not available")
+    return app_state.unified_data_service
 
 
 def get_prompts_repository() -> PromptsRepository:
@@ -619,11 +618,12 @@ def get_account_resolver_service() -> AccountResolverService:
     return app_state.account_resolver_service
 
 
-def get_cache_service() -> CacheService:
-    """Get cache service dependency."""
-    if not app_state.cache_service:
-        raise HTTPException(status_code=503, detail="Cache service not available")
-    return app_state.cache_service
+def get_cache_service():
+    """Get cache service dependency (prefer unified_data_service)."""
+    uds = getattr(app_state, "unified_data_service", None)
+    if not uds:
+        raise HTTPException(status_code=503, detail="Unified data service not available")
+    return uds
 
 
 def get_sql_service() -> SQLService:
@@ -633,11 +633,12 @@ def get_sql_service() -> SQLService:
     return app_state.sql_service
 
 
-def get_feedback_service() -> FeedbackService:
-    """Get feedback service dependency."""
-    if not app_state.feedback_service:
-        raise HTTPException(status_code=503, detail="Feedback service not available")
-    return app_state.feedback_service
+def get_feedback_service():
+    """Get feedback service dependency (prefer unified_data_service)."""
+    uds = getattr(app_state, "unified_data_service", None)
+    if not uds:
+        raise HTTPException(status_code=503, detail="Unified data service not available")
+    return uds
 
 
 def get_graph_service() -> GraphService:
@@ -647,11 +648,12 @@ def get_graph_service() -> GraphService:
     return app_state.graph_service
 
 
-def get_history_service() -> HistoryService:
-    """Get history service dependency."""
-    if not app_state.history_service:
-        raise HTTPException(status_code=503, detail="History service not available")
-    return app_state.history_service
+def get_history_service():
+    """Get history service dependency (prefer unified_data_service)."""
+    uds = getattr(app_state, "unified_data_service", None)
+    if not uds:
+        raise HTTPException(status_code=503, detail="Unified data service not available")
+    return uds
 
 
 
