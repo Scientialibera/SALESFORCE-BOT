@@ -27,10 +27,7 @@ Route to Graph agent for:
 
 ### Direct Response
 Provide direct answers for:
-- General Salesforce knowledge questions
-- Process and procedure inquiries
-- Simple informational requests
-- Clarification questions
+- General knowledge questions not related to proprietary data.
 
 ## Planning Process
 1. **Analyze Request**: Understand user intent and required information

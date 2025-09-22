@@ -1,0 +1,8 @@
+{
+  "messages": [
+    { "role": "system", "content": "You are a helpful assistant." },
+    { "role": "user", "content": "Show me top 5 accounts by revenue for Q2." }
+  ],
+  "user_id": "dev-user",
+  "session_id": "sql-test-1"
+}

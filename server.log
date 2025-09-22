@@ -21,7 +21,7 @@
 {"use_tfidf": true, "confidence_threshold": 0.7, "tfidf_threshold": 0.3, "event": "Account resolver service initialized"}
 {"confidence_threshold": 0.7, "event": "Account resolver service initialized"}
 {"event": "Initializing Semantic Kernel agents"}
-{"event": "Planner configuration skipped - using basic kernel functionality"}
+{"reason": "planners-not-available", "sk_version": "1.37.0", "suggestion": "Install a Semantic Kernel distribution that provides planners, e.g. 'pip install semantic-kernel[planners]' or upgrade/downgrade to a compatible version", "event": "Planner configuration skipped - using basic kernel functionality"}
 {"event": "Planner service initialized"}
 {"event": "SQL agent plugin registered with kernel"}
 {"event": "SQL agent enabled"}
@@ -29,13 +29,149 @@
 {"event": "Graph agent plugin registered with kernel"}
 {"event": "Agents will load functions dynamically from database"}
 {"event": "Application startup completed successfully"}
-{"event": "Shutting down application"}
-{"event": "Azure OpenAI client closed"}
-{"event": "Azure OpenAI client closed"}
-{"event": "Cosmos DB client closed"}
-{"event": "Cosmos DB client closed"}
-{"event": "Gremlin client closed"}
-{"event": "Gremlin client closed"}
-{"event": "Fabric lakehouse client closed"}
-{"event": "Fabric lakehouse client closed"}
-{"event": "Application shutdown completed"}
+{"request_id": "ce1d741f", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12", "event": "HTTP request started"}
+DEBUG: [ce1d741f] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
+DEBUG: [ce1d741f] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12', 'accept-encoding': 'gzip, deflate, br', 'content-type': 'application/json', 'content-length': '212'}
+DEBUG: [ce1d741f] Tasks before request: 4
+DEBUG: [ce1d741f] Event loop running: True, closed: False
+DEBUG: [ce1d741f] About to call next middleware/handler
+{"url": "http://127.0.0.1:8000/api/v1/chat", "event": "Authenticating user request"}
+{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "email": "", "roles": [], "is_admin": false, "permissions_count": 4, "event": "Created RBAC context"}
+{"session_id": "direct-test-1", "turn_id": "42f663e6-aadc-4726-9a54-b0500da37eb3", "user_id": "dev-user", "message_length": 15, "event": "Processing chat message"}
+{"event": "Created Cosmos DB client with managed identity"}
+{"chat_id": "direct-test-1", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Chat history not found"}
+{"error": "'name'", "event": "Failed to list function definitions"}
+{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "error": "'name'", "event": "Failed to get filtered functions"}
+{"agent_name": "planner_system", "tenant_id": "74c77be6-1ad3-4957-a4f2-94028372d7d6", "scenario": "general", "prompt_id": "prompt_planner_system", "event": "Retrieved system prompt"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"error": "RetryError[<Future at 0x1e305060fc0 state=finished raised APIConnectionError>]", "event": "Function-calling plan creation failed"}
+{"error": "RetryError[<Future at 0x1e305060fc0 state=finished raised APIConnectionError>]", "event": "Function-calling planning failed, falling back to basic planner"}
+{"plan_id": "a63674d9-116d-4514-832b-39f2a405563d", "plan_type": "no_tool", "agent_type": "direct_response", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Basic plan created"}
+{"plan_id": "a63674d9-116d-4514-832b-39f2a405563d", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
+{"plan_id": "a63674d9-116d-4514-832b-39f2a405563d", "execution_id": "d35908e8-00cb-44a9-811d-bf86639b59e4", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Starting plan execution"}
+{"step_id": "c94a697d-ecc3-4684-bbdf-8b04c139f6b7", "tool_name": "direct_response", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Executing plan step"}
+{"step_id": "c94a697d-ecc3-4684-bbdf-8b04c139f6b7", "event": "Direct response step executed successfully"}
+{"plan_id": "a63674d9-116d-4514-832b-39f2a405563d", "execution_id": "d35908e8-00cb-44a9-811d-bf86639b59e4", "status": "completed", "duration_seconds": 0.000927, "event": "Plan execution completed"}
+{"session_id": "direct-test-1", "turn_id": "42f663e6-aadc-4726-9a54-b0500da37eb3", "user_message": "Tell me a joke.", "assistant_response": "Here's a business joke for you: Why don't salespeople ever get lost? Because they always know where ...", "event": "Dev mode: Skipping conversation turn save"}
+{"session_id": "direct-test-1", "turn_id": "42f663e6-aadc-4726-9a54-b0500da37eb3", "response_length": 203, "sources_count": 0, "event": "Chat message processed successfully"}
+DEBUG: [ce1d741f] Handler completed successfully
+DEBUG: [ce1d741f] Response status: 200
+DEBUG: [ce1d741f] Tasks after request: 5
+DEBUG: [ce1d741f] Event loop running: True, closed: False
+{"request_id": "ce1d741f", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 23404, "event": "HTTP request completed"}
+DEBUG: [ce1d741f] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:53363 - "POST /api/v1/chat HTTP/1.1" 200 OK
+{"request_id": "0aca2568", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12", "event": "HTTP request started"}
+DEBUG: [0aca2568] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
+DEBUG: [0aca2568] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12', 'accept-encoding': 'gzip, deflate, br', 'content-type': 'application/json', 'content-length': '235'}
+DEBUG: [0aca2568] Tasks before request: 4
+DEBUG: [0aca2568] Event loop running: True, closed: False
+DEBUG: [0aca2568] About to call next middleware/handler
+{"url": "http://127.0.0.1:8000/api/v1/chat", "event": "Authenticating user request"}
+{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "email": "", "roles": [], "is_admin": false, "permissions_count": 4, "event": "Created RBAC context"}
+{"session_id": "sql-test-1", "turn_id": "91a5da63-7104-49fc-b92b-5553b0a9276d", "user_id": "dev-user", "message_length": 41, "event": "Processing chat message"}
+{"chat_id": "sql-test-1", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Chat history not found"}
+{"error": "'name'", "event": "Failed to list function definitions"}
+{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "error": "'name'", "event": "Failed to get filtered functions"}
+{"agent_name": "planner_system", "tenant_id": "74c77be6-1ad3-4957-a4f2-94028372d7d6", "scenario": "general", "prompt_id": "prompt_planner_system", "event": "Retrieved system prompt"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"error": "RetryError[<Future at 0x1e305443020 state=finished raised APIConnectionError>]", "event": "Function-calling plan creation failed"}
+{"error": "RetryError[<Future at 0x1e305443020 state=finished raised APIConnectionError>]", "event": "Function-calling planning failed, falling back to basic planner"}
+{"plan_id": "c1fd298f-953e-4c74-a2fd-08452407d6ba", "plan_type": "sql_only", "agent_type": "sql_agent", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Basic plan created"}
+{"plan_id": "c1fd298f-953e-4c74-a2fd-08452407d6ba", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
+{"plan_id": "c1fd298f-953e-4c74-a2fd-08452407d6ba", "execution_id": "76edc78f-704f-423c-bca1-38425274cad4", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Starting plan execution"}
+{"step_id": "00322a9c-4ec1-4288-9725-16050becdab3", "tool_name": "sql_agent", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Executing plan step"}
+{"user_query": "Show me top 5 accounts by revenue for Q2.", "data_types": "opportunities,contacts,cases,revenue", "limit": "20", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Querying account data from user query"}
+{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "query_length": 41, "use_tfidf": true, "event": "Starting account resolution"}
+{"key": "allowed_accounts:f96e8a42-f62e-4064-8897-1e12ca6e250a", "error": "Object of type datetime is not JSON serializable", "event": "Failed to set cache item"}
+{"account_count": 3, "event": "Fitting TF-IDF filter"}
+{"account_count": 3, "event": "Fitting TF-IDF vectorizer on account corpus"}
+{"error": "\n**********************************************************************\n  Resource \u001b[93mpunkt_tab\u001b[0m not found.\n  Please use the NLTK Downloader to obtain the resource:\n\n  \u001b[31m>>> import nltk\n  >>> nltk.download('punkt_tab')\n  \u001b[0m\n  For more information see: https://www.nltk.org/data.html\n\n  Attempted to load \u001b[93mtokenizers/punkt_tab/english/\u001b[0m\n\n  Searched in:\n    - 'C:\\\\Users\\\\emili/nltk_data'\n    - 'C:\\\\Python313\\\\nltk_data'\n    - 'C:\\\\Python313\\\\share\\\\nltk_data'\n    - 'C:\\\\Python313\\\\lib\\\\nltk_data'\n    - 'C:\\\\Users\\\\emili\\\\AppData\\\\Roaming\\\\nltk_data'\n    - 'C:\\\\nltk_data'\n    - 'D:\\\\nltk_data'\n    - 'E:\\\\nltk_data'\n**********************************************************************\n", "event": "Failed to fit TF-IDF vectorizer"}
+{"error": "\n**********************************************************************\n  Resource \u001b[93mpunkt_tab\u001b[0m not found.\n  Please use the NLTK Downloader to obtain the resource:\n\n  \u001b[31m>>> import nltk\n  >>> nltk.download('punkt_tab')\n  \u001b[0m\n  For more information see: https://www.nltk.org/data.html\n\n  Attempted to load \u001b[93mtokenizers/punkt_tab/english/\u001b[0m\n\n  Searched in:\n    - 'C:\\\\Users\\\\emili/nltk_data'\n    - 'C:\\\\Python313\\\\nltk_data'\n    - 'C:\\\\Python313\\\\share\\\\nltk_data'\n    - 'C:\\\\Python313\\\\lib\\\\nltk_data'\n    - 'C:\\\\Users\\\\emili\\\\AppData\\\\Roaming\\\\nltk_data'\n    - 'C:\\\\nltk_data'\n    - 'D:\\\\nltk_data'\n    - 'E:\\\\nltk_data'\n**********************************************************************\n", "event": "Failed to fit TF-IDF filter"}
+{"event": "TF-IDF vectorizer not fitted, returning empty results"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"error": "RetryError[<Future at 0x1e3056656d0 state=finished raised APIConnectionError>]", "event": "Failed to extract account candidates"}
+{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "candidates_count": 1, "resolved_count": 0, "requires_disambiguation": true, "confidence": 0.0, "event": "LLM + embeddings resolution completed"}
+{"method": "llm_primary", "combined_confidence": 0.0, "resolved_count": 0, "suggestions_count": 3, "event": "Combined resolution results"}
+{"event_id": "24472a65-3275-4cfd-97b9-c02bb403b09f", "event_type": "performance_metric", "severity": "info", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "session_id": null, "event": "Telemetry event tracked"}
+{"user_query": "Show me top 5 accounts by revenue for Q2.", "error": "string indices must be integers, not 'str'", "event": "Failed to query account data"}
+{"step_id": "00322a9c-4ec1-4288-9725-16050becdab3", "event": "Step executed successfully"}
+{"plan_id": "c1fd298f-953e-4c74-a2fd-08452407d6ba", "execution_id": "76edc78f-704f-423c-bca1-38425274cad4", "status": "completed", "duration_seconds": 19.802843, "event": "Plan execution completed"}
+{"session_id": "sql-test-1", "turn_id": "91a5da63-7104-49fc-b92b-5553b0a9276d", "user_message": "Show me top 5 accounts by revenue for Q2.", "assistant_response": "{\"success\": false, \"error\": \"string indices must be integers, not 'str'\", \"user_query\": \"Show me top...", "event": "Dev mode: Skipping conversation turn save"}
+{"session_id": "sql-test-1", "turn_id": "91a5da63-7104-49fc-b92b-5553b0a9276d", "response_length": 132, "sources_count": 0, "event": "Chat message processed successfully"}
+DEBUG: [0aca2568] Handler completed successfully
+DEBUG: [0aca2568] Response status: 200
+DEBUG: [0aca2568] Tasks after request: 6
+DEBUG: [0aca2568] Event loop running: True, closed: False
+{"request_id": "0aca2568", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 38863, "event": "HTTP request completed"}
+DEBUG: [0aca2568] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:57812 - "POST /api/v1/chat HTTP/1.1" 200 OK
+{"database": "telemetry", "event": "Database not found, creating new database"}
+{"database": "telemetry", "container": "events", "error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 4b3d4db1-4772-4b12-b656-1606ef1aede9, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 4b3d4db1-4772-4b12-b656-1606ef1aede9, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to get or create container for database"}
+{"error": "(Forbidden) Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 4b3d4db1-4772-4b12-b656-1606ef1aede9, Microsoft.Azure.Documents.Common/2.14.0\nCode: Forbidden\nMessage: Request blocked by Auth salesforcebot-cosmos-sql : The given request [POST /dbs] cannot be authorized by AAD token in data plane. Learn more: https://aka.ms/cosmos-native-rbac.\r\nActivityId: 4b3d4db1-4772-4b12-b656-1606ef1aede9, Microsoft.Azure.Documents.Common/2.14.0", "event": "Failed to store telemetry event"}
+{"request_id": "e749bbae", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12", "event": "HTTP request started"}
+DEBUG: [e749bbae] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
+DEBUG: [e749bbae] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12', 'accept-encoding': 'gzip, deflate, br', 'content-type': 'application/json', 'content-length': '249'}
+DEBUG: [e749bbae] Tasks before request: 4
+DEBUG: [e749bbae] Event loop running: True, closed: False
+DEBUG: [e749bbae] About to call next middleware/handler
+{"url": "http://127.0.0.1:8000/api/v1/chat", "event": "Authenticating user request"}
+{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "email": "", "roles": [], "is_admin": false, "permissions_count": 4, "event": "Created RBAC context"}
+{"session_id": "graph-test-1", "turn_id": "a8401180-ea87-4e70-82d9-1d18b43ba5c1", "user_id": "dev-user", "message_length": 53, "event": "Processing chat message"}
+{"chat_id": "graph-test-1", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Chat history not found"}
+{"error": "'name'", "event": "Failed to list function definitions"}
+{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "error": "'name'", "event": "Failed to get filtered functions"}
+{"agent_name": "planner_system", "tenant_id": "74c77be6-1ad3-4957-a4f2-94028372d7d6", "scenario": "general", "prompt_id": "prompt_planner_system", "event": "Retrieved system prompt"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"error": "RetryError[<Future at 0x1e305091710 state=finished raised APIConnectionError>]", "event": "Function-calling plan creation failed"}
+{"error": "RetryError[<Future at 0x1e305091710 state=finished raised APIConnectionError>]", "event": "Function-calling planning failed, falling back to basic planner"}
+{"plan_id": "372da688-73ce-449d-b80b-8084a10a90a9", "plan_type": "graph_only", "agent_type": "graph_agent", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Basic plan created"}
+{"plan_id": "372da688-73ce-449d-b80b-8084a10a90a9", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
+{"plan_id": "372da688-73ce-449d-b80b-8084a10a90a9", "execution_id": "fd2353c2-5c6e-4ae1-9f1a-efdf1224b1f8", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Starting plan execution"}
+{"step_id": "6587769a-77ca-4a9d-9d3d-bfbee3ed046f", "tool_name": "graph_agent", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Executing plan step"}
+{"user_query": "Who are the contacts associated with account Contoso?", "relationship_types": "", "max_depth": "2", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Finding account relationships from query"}
+{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "query_length": 53, "use_tfidf": true, "event": "Starting account resolution"}
+{"key": "allowed_accounts:f96e8a42-f62e-4064-8897-1e12ca6e250a", "error": "Object of type datetime is not JSON serializable", "event": "Failed to set cache item"}
+{"account_count": 3, "event": "Fitting TF-IDF filter"}
+{"account_count": 3, "event": "Fitting TF-IDF vectorizer on account corpus"}
+{"error": "\n**********************************************************************\n  Resource \u001b[93mpunkt_tab\u001b[0m not found.\n  Please use the NLTK Downloader to obtain the resource:\n\n  \u001b[31m>>> import nltk\n  >>> nltk.download('punkt_tab')\n  \u001b[0m\n  For more information see: https://www.nltk.org/data.html\n\n  Attempted to load \u001b[93mtokenizers/punkt_tab/english/\u001b[0m\n\n  Searched in:\n    - 'C:\\\\Users\\\\emili/nltk_data'\n    - 'C:\\\\Python313\\\\nltk_data'\n    - 'C:\\\\Python313\\\\share\\\\nltk_data'\n    - 'C:\\\\Python313\\\\lib\\\\nltk_data'\n    - 'C:\\\\Users\\\\emili\\\\AppData\\\\Roaming\\\\nltk_data'\n    - 'C:\\\\nltk_data'\n    - 'D:\\\\nltk_data'\n    - 'E:\\\\nltk_data'\n**********************************************************************\n", "event": "Failed to fit TF-IDF vectorizer"}
+{"error": "\n**********************************************************************\n  Resource \u001b[93mpunkt_tab\u001b[0m not found.\n  Please use the NLTK Downloader to obtain the resource:\n\n  \u001b[31m>>> import nltk\n  >>> nltk.download('punkt_tab')\n  \u001b[0m\n  For more information see: https://www.nltk.org/data.html\n\n  Attempted to load \u001b[93mtokenizers/punkt_tab/english/\u001b[0m\n\n  Searched in:\n    - 'C:\\\\Users\\\\emili/nltk_data'\n    - 'C:\\\\Python313\\\\nltk_data'\n    - 'C:\\\\Python313\\\\share\\\\nltk_data'\n    - 'C:\\\\Python313\\\\lib\\\\nltk_data'\n    - 'C:\\\\Users\\\\emili\\\\AppData\\\\Roaming\\\\nltk_data'\n    - 'C:\\\\nltk_data'\n    - 'D:\\\\nltk_data'\n    - 'E:\\\\nltk_data'\n**********************************************************************\n", "event": "Failed to fit TF-IDF filter"}
+{"event": "TF-IDF vectorizer not fitted, returning empty results"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"event": "Created Azure OpenAI client with managed identity token"}
+{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
+{"error": "RetryError[<Future at 0x1e305760aa0 state=finished raised APIConnectionError>]", "event": "Failed to extract account candidates"}
+{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "candidates_count": 2, "resolved_count": 0, "requires_disambiguation": true, "confidence": 0.0, "event": "LLM + embeddings resolution completed"}
+{"method": "llm_primary", "combined_confidence": 0.0, "resolved_count": 0, "suggestions_count": 3, "event": "Combined resolution results"}
+{"step_id": "6587769a-77ca-4a9d-9d3d-bfbee3ed046f", "event": "Step executed successfully"}
+{"plan_id": "372da688-73ce-449d-b80b-8084a10a90a9", "execution_id": "fd2353c2-5c6e-4ae1-9f1a-efdf1224b1f8", "status": "completed", "duration_seconds": 20.445762, "event": "Plan execution completed"}
+{"session_id": "graph-test-1", "turn_id": "a8401180-ea87-4e70-82d9-1d18b43ba5c1", "user_message": "Who are the contacts associated with account Contoso?", "assistant_response": "{\"success\": false, \"error\": \"No accounts could be resolved from the query\", \"user_query\": \"Who are t...", "event": "Dev mode: Skipping conversation turn save"}
+{"session_id": "graph-test-1", "turn_id": "a8401180-ea87-4e70-82d9-1d18b43ba5c1", "response_length": 215, "sources_count": 0, "event": "Chat message processed successfully"}
+DEBUG: [e749bbae] Handler completed successfully
+DEBUG: [e749bbae] Response status: 200
+DEBUG: [e749bbae] Tasks after request: 5
+DEBUG: [e749bbae] Event loop running: True, closed: False
+{"request_id": "e749bbae", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 39875, "event": "HTTP request completed"}

@@ -1,0 +1,8 @@
+{
+  "messages": [
+    { "role": "system", "content": "You are a helpful assistant." },
+    { "role": "user", "content": "Tell me a joke." }
+  ],
+  "user_id": "dev-user",
+  "session_id": "direct-test-1"
+}
