@@ -17,9 +17,8 @@ from pydantic import BaseModel, Field
 
 from chatbot.models.message import ChatHistory, ConversationTurn, Message, MessageRole
 from chatbot.models.user import User
-from chatbot.models.rbac import RBACContext
+from chatbot.models.rbac import RBACContext, AccessScope
 from chatbot.models.result import FeedbackData
-from chatbot.services.planner_service import PlannerService
 from chatbot.services.history_service import HistoryService
 from chatbot.services.feedback_service import FeedbackService
 from chatbot.repositories.chat_history_repository import ChatHistoryRepository
@@ -93,98 +92,84 @@ async def get_current_user(
     Returns:
         RBAC context for the authenticated user
     """
-    try:
-        logger.info("Authenticating user request", url=str(request.url) if request else "unknown")
-        
-        # Attempt to build RBAC context from an Authorization header if present
-        # If we have an Authorization header, use it (TODO: full validation)
-        if credentials and getattr(credentials, "credentials", None):
-            token = credentials.credentials
-            # Try to decode token without verification to extract claims
+
+    logger.info("Authenticating user request", url=str(request.url) if request else "unknown")
+
+    # Attempt to build RBAC context from an Authorization header if present
+    if credentials and getattr(credentials, "credentials", None):
+        token = credentials.credentials
+        # Try to decode token without verification to extract claims
+        try:
+            claims = jose_jwt.get_unverified_claims(token)
+        except Exception:
+            claims = {"oid": "user123", "email": "user@example.com", "tid": "tenant123", "roles": ["sales_rep"]}
+        # If running in dev mode, persist minimal claims to .env for convenience
+        try:
+            if settings.dev_mode and claims:
+                env_path = "./.env"
+                env_vars = {}
+                try:
+                    with open(env_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if "=" in line and not line.strip().startswith("#"):
+                                k, v = line.strip().split("=", 1)
+                                env_vars[k.strip()] = v.strip()
+                except FileNotFoundError:
+                    pass
+
+                email = claims.get("email") or claims.get("upn") or claims.get("preferred_username")
+                oid = claims.get("oid") or claims.get("sub")
+
+                if email:
+                    env_vars["DEV_USER_EMAIL"] = email
+                if oid:
+                    env_vars["DEV_USER_OID"] = oid
+
+                # Write back .env
+                with open(env_path, "w", encoding="utf-8") as f:
+                    for k, v in env_vars.items():
+                        f.write(f"{k}={v}\n")
+        except Exception:
+            logger.debug("Failed to persist .env dev claims", error=str(Exception))
+
+        # Build and return RBACContext from claims
+        context = RBACContext(
+            user_id=claims.get("email", "user@example.com"),
+            email=claims.get("email", "user@example.com"),
+            tenant_id=claims.get("tid", "tenant123"),
+            object_id=claims.get("oid", "user123"),
+            roles=claims.get("roles", ["sales_rep"]),
+            access_scope=AccessScope(),
+        )
+        return context
+
+
+    # No Authorization header: in dev mode try DefaultAzureCredential to get a token and extract claims
+    if settings.dev_mode:
+        try:
+            cred = DefaultAzureCredential()
+            token = cred.get_token("https://management.azure.com/.default").token
             try:
                 claims = jose_jwt.get_unverified_claims(token)
             except Exception:
-                claims = {"oid": "user123", "email": "user@example.com", "tid": "tenant123", "roles": ["sales_rep"]}
-            # If running in dev mode, persist minimal claims to .env for convenience
-            try:
-                if settings.dev_mode and claims:
-                    env_path = "./.env"
-                    env_vars = {}
-                    try:
-                            with open(env_path, "r", encoding="utf-8") as f:
-                                for line in f:
-                                    if "=" in line and not line.strip().startswith("#"):
-                                        k, v = line.strip().split("=", 1)
-                                        env_vars[k.strip()] = v.strip()
-                        except FileNotFoundError:
-                            pass
-
-                        email = claims.get("email") or claims.get("upn") or claims.get("preferred_username")
-                        oid = claims.get("oid") or claims.get("sub")
-
-                        if email:
-                            env_vars["DEV_USER_EMAIL"] = email
-                        if oid:
-                            env_vars["DEV_USER_OID"] = oid
-
-                        # Write back .env
-                        with open(env_path, "w", encoding="utf-8") as f:
-                            for k, v in env_vars.items():
-                                f.write(f"{k}={v}\n")
-                except Exception:
-                    logger.debug("Failed to persist .env dev claims", error=str(Exception))
-
-                return context
-
-        # No Authorization header: in dev mode try DefaultAzureCredential to get a token and extract claims
-        try:
-            if settings.dev_mode:
-                try:
-                    cred = DefaultAzureCredential()
-                    # Request a management scope token as a best-effort; token will be an access token (claims may vary)
-                    token = cred.get_token("https://management.azure.com/.default").token
-                    try:
-                        claims = jose_jwt.get_unverified_claims(token)
-                    except Exception:
-                        claims = {}
-                    # RBACService removed: just use claims directly
-                except Exception as e:
-                    logger.info("DefaultAzureCredential failed in dev mode, falling back to mock claims", error=str(e))
-
+                claims = {}
         except Exception as e:
-            logger.error("Unexpected error while attempting to build RBAC context", error=str(e))
+            logger.info("DefaultAzureCredential failed in dev mode, falling back to mock claims", error=str(e))
 
-        # Final fallback: return a minimal mock context
-        logger.info("Using fallback RBAC context")
-    from chatbot.models.rbac import RBACContext
-        context = RBACContext(
-            user_id="user@example.com",
-            email="user@example.com",
-            tenant_id="tenant123",
-            object_id="user123",
-            roles=["sales_rep"],
-            access_scope=AccessScope(),
-        )
-        logger.info("Fallback RBAC context created successfully")
-        return context
-        
-    except Exception as e:
-        import traceback
-        logger.error("Failed to authenticate user", error=str(e), traceback=traceback.format_exc())
-        print(f"AUTH EXCEPTION: {type(e).__name__}: {str(e)}")
-        print(f"Auth Traceback:\n{traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication token",
-        )
+    # Final fallback: return a minimal mock context
+    logger.info("Using fallback RBAC context")
+    context = RBACContext(
+        user_id="user@example.com",
+        email="user@example.com",
+        tenant_id="tenant123",
+        object_id="user123",
+        roles=["sales_rep"],
+        access_scope=AccessScope(),
+    )
+    logger.info("Fallback RBAC context created successfully")
+    return context
 
 
-def get_planner_service() -> PlannerService:
-    """Get planner service dependency."""
-    from chatbot.app import app_state
-    if not app_state.planner_service:
-        raise HTTPException(status_code=503, detail="Planner service not available")
-    return app_state.planner_service
 
 
 def get_history_service() -> HistoryService:
@@ -207,25 +192,23 @@ def get_feedback_service() -> FeedbackService:
 @router.post("/chat", response_model=ChatResponse)
 async def send_message(
     request_data: ChatRequest,
-    planner_service: PlannerService = Depends(get_planner_service),
     history_service: HistoryService = Depends(get_history_service),
     user_context: RBACContext = Depends(get_current_user),
 ) -> ChatResponse:
     """
-    Send a message and get AI response using Semantic Kernel planner.
+    Send a message and get AI response using function calling (no planner).
     OpenAI Chat Completion API compatible endpoint.
     
     Args:
         request_data: Chat completion request with messages array
-        planner_service: Planner service for orchestration
         history_service: History service for conversation management
-        
     Returns:
         AI response in OpenAI Chat Completion format
     """
     try:
         # Extract user message from messages array (get the latest user message)
         user_messages = [msg for msg in request_data.messages if msg.role == "user"]
+        # ...existing code for function calling/agent logic goes here...
         if not user_messages:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -271,70 +254,34 @@ async def send_message(
                 logger.warning(f"Failed to create chat session: {create_error}")
                 # Continue anyway - we'll handle this in the save step
         
-        # Execute plan using planner service
+        # Direct LLM answering (no tool/function call)
+        from chatbot.app import app_state
+        aoai_client = app_state.aoai_client
+        assistant_response = None
+        sources = []
+        metadata = {
+            "mode": "direct_answer",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        # Call AzureOpenAIClient for direct LLM response
         try:
-            plan_result = await planner_service.create_plan(
-                user_request=user_message,
-                rbac_context=user_context,
-                conversation_context=conversation_context,
+            llm_result = await aoai_client.create_chat_completion(
+                [msg.model_dump() for msg in request_data.messages]
             )
-
-            # --- Account resolution logic (NEW) ---
-            # Collect all unique accounts_mentioned from all steps
-            all_accounts_mentioned = set()
-            for step in getattr(plan_result, 'steps', []):
-                params = getattr(step, 'parameters', {}) or getattr(getattr(step, 'tool_decision', None), 'parameters', {})
-                accounts = params.get('accounts_mentioned') if params else None
-                if accounts:
-                    all_accounts_mentioned.update(accounts)
-
-            resolved_accounts = []
-            if all_accounts_mentioned:
-                # Only import here to avoid circular import
-                from chatbot.services.account_resolver_service import AccountResolverService
-                account_resolver = AccountResolverService(
-                    aoai_client=None,  # Use DI or global if needed
-                    cache_repository=None,  # Use DI or global if needed
-                )
-                # Use a dummy RBAC context if needed, or pass user_context
-                # This assumes resolve_account can take a list of names
-                resolved = await account_resolver.resolve_account(
-                    ', '.join(all_accounts_mentioned), user_context
-                )
-                resolved_accounts = resolved.get('resolved_accounts', []) if isinstance(resolved, dict) else resolved
-
-            # Patch plan steps to inject resolved_accounts
-            for step in getattr(plan_result, 'steps', []):
-                params = getattr(step, 'parameters', {}) or getattr(getattr(step, 'tool_decision', None), 'parameters', {})
-                if params is not None and 'accounts_mentioned' in params:
-                    params['resolved_accounts'] = resolved_accounts if all_accounts_mentioned else None
-
-            # Execute the plan and get results
-            execution_result = await planner_service.execute_plan(plan_result, user_context)
-
-            # Extract response from execution result
-            assistant_response = execution_result.final_output or "I wasn't able to process your request."
-            sources = execution_result.execution_metadata.get("sources", [])
-            metadata = {
-                "mode": "agent_execution",
-                "plan_id": plan_result.id,
-                "plan_type": plan_result.plan_type.value,
-                "execution_id": execution_result.execution_id,
-                "steps_executed": len(execution_result.step_results),
-                "execution_status": execution_result.status,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-
-        except Exception as e:
-            logger.error(f"Plan execution failed: {e}")
-            # Fallback to simple response if plan execution fails
-            assistant_response = f"I encountered an issue processing your request: {user_message}. The system is being debugged."
-            sources = []
-            metadata = {
-                "mode": "fallback_response",
-                "error": str(e),
-                "timestamp": datetime.utcnow().isoformat()
-            }
+            # Extract the assistant's reply from the response
+            if llm_result and "choices" in llm_result and llm_result["choices"]:
+                assistant_response = llm_result["choices"][0]["message"]["content"]
+                # Optionally, update usage and metadata from LLM result
+                usage = llm_result.get("usage", {})
+                metadata["llm_model"] = llm_result.get("model")
+            else:
+                assistant_response = "[Error: No response from language model.]"
+                usage = {}
+        except Exception as llm_error:
+            logger.error("Direct LLM answering failed", error=str(llm_error))
+            assistant_response = f"[Error: LLM call failed: {llm_error}]"
+            usage = {}
         
         # Save the conversation turn 
         if settings.dev_mode:
@@ -401,11 +348,13 @@ async def send_message(
             }
         ]
         
-        usage = {
-            "prompt_tokens": len(user_message.split()),  # Rough estimate
-            "completion_tokens": len(assistant_response.split()),  # Rough estimate
-            "total_tokens": len(user_message.split()) + len(assistant_response.split())
-        }
+        # If usage not set by LLM, estimate tokens
+        if not usage:
+            usage = {
+                "prompt_tokens": len(user_message.split()),
+                "completion_tokens": len(assistant_response.split()),
+                "total_tokens": len(user_message.split()) + len(assistant_response.split())
+            }
         
         return ChatResponse(
             session_id=session_id,

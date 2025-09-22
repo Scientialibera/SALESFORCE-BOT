@@ -57,6 +57,7 @@ class AzureOpenAIClient:
     async def _get_token(self) -> str:
         """Get Azure AD token for Azure OpenAI service."""
         try:
+            # Use the correct resource for OpenAI endpoint
             token = await self._credential.get_token("https://cognitiveservices.azure.com/.default")
             return token.token
         except Exception as e:
@@ -68,13 +69,12 @@ class AzureOpenAIClient:
         if self._client is None:
             token = await self._get_token()
             self._client = AsyncAzureOpenAI(
-                azure_endpoint=self.settings.endpoint,
+                azure_endpoint=self.settings.endpoint.rstrip("/"),
                 api_version=self.settings.api_version,
                 azure_ad_token=token,
             )
             self._token_cache = token
-            logger.info("Created Azure OpenAI client with managed identity token")
-        
+            logger.info("Created Azure OpenAI client with managed identity token", endpoint=self.settings.endpoint, deployment=self.settings.chat_deployment)
         return self._client
     
     @retry(
@@ -102,7 +102,6 @@ class AzureOpenAIClient:
             Chat completion response
         """
         client = await self._get_client()
-        
         try:
             response = await client.chat.completions.create(
                 model=self.settings.chat_deployment,
@@ -111,20 +110,19 @@ class AzureOpenAIClient:
                 max_tokens=max_tokens or self.settings.max_tokens,
                 **kwargs
             )
-            
             logger.debug(
                 "Chat completion created",
+                endpoint=self.settings.endpoint,
                 deployment=self.settings.chat_deployment,
                 message_count=len(messages),
                 usage=response.usage.model_dump() if response.usage else None,
             )
-            
             return response.model_dump()
-            
         except Exception as e:
             logger.error(
                 "Failed to create chat completion",
                 error=str(e),
+                endpoint=self.settings.endpoint,
                 deployment=self.settings.chat_deployment,
                 message_count=len(messages),
             )

@@ -3,7 +3,7 @@
 {"app_name": "salesforce-chatbot", "version": "1.0.0", "debug": false, "event": "Created FastAPI application"}
 {"version": "1.0.0", "event": "Starting Account Q&A Bot application"}
 {"event": "Initializing Azure service clients"}
-{"endpoint": "https://salesforcebot-aoai-eastus2.cognitiveservices.azure.com", "chat_deployment": "gpt-4o", "embedding_deployment": "text-embedding-3-small", "event": "Initializing Azure OpenAI client"}
+{"endpoint": "https://salesforcebot-aoai-eastus2.cognitiveservices.azure.com", "chat_deployment": "gpt-41-chat", "embedding_deployment": "text-embedding-3-small", "event": "Initializing Azure OpenAI client"}
 {"event": "Azure OpenAI client initialized successfully"}
 {"endpoint": "https://salesforcebot-cosmos-sql.documents.azure.com:443/", "database": "appdb", "event": "Initializing Cosmos DB client"}
 {"event": "Cosmos DB client initialized successfully"}
@@ -16,53 +16,12 @@
 {"container": "chat_history", "event": "Initialized chat history repository"}
 {"event": "Initializing application services"}
 {"enforce_rbac": false, "admin_users": 0, "event": "Initialized RBAC service"}
-{"enforce_rbac": false, "admin_users": 0, "event": "Initialized RBAC service"}
 {"min_similarity": 0.3, "max_candidates": 20, "event": "Account resolver filter initialized"}
 {"use_tfidf": true, "confidence_threshold": 0.7, "tfidf_threshold": 0.3, "event": "Account resolver service initialized"}
 {"confidence_threshold": 0.7, "event": "Account resolver service initialized"}
 {"event": "Initializing Semantic Kernel agents"}
-{"reason": "planners-not-available", "sk_version": "1.37.0", "suggestion": "Install a Semantic Kernel distribution that provides planners, e.g. 'pip install semantic-kernel[planners]' or upgrade/downgrade to a compatible version", "event": "Planner configuration skipped - using basic kernel functionality"}
-{"event": "Planner service initialized"}
 {"event": "SQL agent plugin registered with kernel"}
 {"event": "SQL agent enabled"}
 {"event": "Graph agent enabled"}
-{"event": "Graph agent plugin registered with kernel"}
 {"event": "Agents will load functions dynamically from database"}
 {"event": "Application startup completed successfully"}
-{"request_id": "c05cd3c8", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "user_agent": "Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12", "event": "HTTP request started"}
-DEBUG: [c05cd3c8] REQUEST START: POST http://127.0.0.1:8000/api/v1/chat
-DEBUG: [c05cd3c8] Headers: {'host': '127.0.0.1:8000', 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Microsoft Windows 10.0.26100; en-CA) PowerShell/7.4.12', 'accept-encoding': 'gzip, deflate, br', 'content-type': 'application/json', 'content-length': '212'}
-DEBUG: [c05cd3c8] Tasks before request: 4
-DEBUG: [c05cd3c8] Event loop running: True, closed: False
-DEBUG: [c05cd3c8] About to call next middleware/handler
-{"url": "http://127.0.0.1:8000/api/v1/chat", "event": "Authenticating user request"}
-{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "email": "", "roles": [], "is_admin": false, "permissions_count": 4, "event": "Created RBAC context"}
-{"session_id": "direct-test-1", "turn_id": "526ba146-79d6-42c7-a974-f4844744b1a2", "user_id": "dev-user", "message_length": 15, "event": "Processing chat message"}
-{"event": "Created Cosmos DB client with managed identity"}
-{"chat_id": "direct-test-1", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Chat history not found"}
-{"function_count": 5, "event": "Retrieved all function definitions"}
-{"user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "error": "'RBACService' object has no attribute 'check_function_permission'", "event": "Failed to get filtered functions"}
-{"agent_name": "planner_system", "tenant_id": "74c77be6-1ad3-4957-a4f2-94028372d7d6", "scenario": "general", "prompt_id": "prompt_planner_system", "event": "Retrieved system prompt"}
-{"event": "Created Azure OpenAI client with managed identity token"}
-{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
-{"event": "Created Azure OpenAI client with managed identity token"}
-{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
-{"event": "Created Azure OpenAI client with managed identity token"}
-{"error": "Connection error.", "deployment": "gpt-4o", "message_count": 2, "event": "Failed to create chat completion"}
-{"error": "RetryError[<Future at 0x1a4c058cfc0 state=finished raised APIConnectionError>]", "event": "Function-calling plan creation failed"}
-{"error": "RetryError[<Future at 0x1a4c058cfc0 state=finished raised APIConnectionError>]", "event": "Function-calling planning failed, falling back to basic planner"}
-{"plan_id": "97de3039-51fb-4de5-84e7-2b10fde7b713", "plan_type": "no_tool", "agent_type": "direct_response", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Basic plan created"}
-{"plan_id": "97de3039-51fb-4de5-84e7-2b10fde7b713", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "steps_count": 1, "planner_type": "sequential", "event": "Plan created successfully"}
-{"plan_id": "97de3039-51fb-4de5-84e7-2b10fde7b713", "execution_id": "53d9e357-4c19-45bf-813e-a904018044d8", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Starting plan execution"}
-{"step_id": "49817eee-3465-4171-9d54-cd4a74035f99", "tool_name": "direct_response", "user_id": "f96e8a42-f62e-4064-8897-1e12ca6e250a", "event": "Executing plan step"}
-{"step_id": "49817eee-3465-4171-9d54-cd4a74035f99", "event": "Direct response step executed successfully"}
-{"plan_id": "97de3039-51fb-4de5-84e7-2b10fde7b713", "execution_id": "53d9e357-4c19-45bf-813e-a904018044d8", "status": "completed", "duration_seconds": 0.001119, "event": "Plan execution completed"}
-{"session_id": "direct-test-1", "turn_id": "526ba146-79d6-42c7-a974-f4844744b1a2", "user_message": "Tell me a joke.", "assistant_response": "Here's a business joke for you: Why don't salespeople ever get lost? Because they always know where ...", "event": "Dev mode: Skipping conversation turn save"}
-{"session_id": "direct-test-1", "turn_id": "526ba146-79d6-42c7-a974-f4844744b1a2", "response_length": 203, "sources_count": 0, "event": "Chat message processed successfully"}
-DEBUG: [c05cd3c8] Handler completed successfully
-DEBUG: [c05cd3c8] Response status: 200
-DEBUG: [c05cd3c8] Tasks after request: 5
-DEBUG: [c05cd3c8] Event loop running: True, closed: False
-{"request_id": "c05cd3c8", "method": "POST", "url": "http://127.0.0.1:8000/api/v1/chat", "status_code": 200, "duration_ms": 21705, "event": "HTTP request completed"}
-DEBUG: [c05cd3c8] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:63780 - "POST /api/v1/chat HTTP/1.1" 200 OK

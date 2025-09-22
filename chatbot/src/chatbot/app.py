@@ -42,7 +42,6 @@ from chatbot.services.sql_service import SQLService
 from chatbot.services.feedback_service import FeedbackService
 from chatbot.services.graph_service import GraphService
 from chatbot.services.history_service import HistoryService
-from chatbot.services.planner_service import PlannerService
 from chatbot.services.retrieval_service import RetrievalService
 from chatbot.services.telemetry_service import TelemetryService
 
@@ -98,7 +97,6 @@ class ApplicationState:
         self.feedback_service: FeedbackService = None
         self.graph_service: GraphService = None
         self.history_service: HistoryService = None
-        self.planner_service: PlannerService = None
         self.retrieval_service: RetrievalService = None
         self.telemetry_service: TelemetryService = None
         
@@ -247,24 +245,12 @@ async def lifespan(app: FastAPI):
         import semantic_kernel as sk
         kernel = sk.Kernel()
         
-        # Initialize planner service
-        app_state.planner_service = PlannerService(
-            kernel,
-            app_state.agent_functions_repository,
-            app_state.prompts_repository,
-            app_state.rbac_service,
-            aoai_client=app_state.aoai_client,
-        )
-        
-        # Initialize planner
-        logger.info("Planner service initialized")
         
         # Initialize SQL agent
         app_state.sql_agent = SQLAgent(
             kernel,
             app_state.sql_service,
             app_state.account_resolver_service,
-            app_state.rbac_service,
             app_state.telemetry_service,
         )
         
@@ -275,10 +261,6 @@ async def lifespan(app: FastAPI):
         
         # Initialize Graph agent
         app_state.graph_agent = GraphAgent(
-            kernel,
-            app_state.graph_service,
-            app_state.account_resolver_service,
-            app_state.rbac_service,
             app_state.telemetry_service,
         )
         
@@ -672,11 +654,6 @@ def get_history_service() -> HistoryService:
     return app_state.history_service
 
 
-def get_planner_service() -> PlannerService:
-    """Get planner service dependency."""
-    if not app_state.planner_service:
-        raise HTTPException(status_code=503, detail="Planner service not available")
-    return app_state.planner_service
 
 
 def get_retrieval_service() -> RetrievalService:
