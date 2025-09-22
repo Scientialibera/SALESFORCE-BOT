@@ -161,8 +161,13 @@ if ($ResourceGroup) {
 
 	if ($foundAoai) {
 		$aoaiName = $foundAoai.name
-		$aoaiEndpoint = "https://$($aoaiName).cognitiveservices.azure.com"
-		Write-Output "Detected Azure OpenAI account: $aoaiName -> $aoaiEndpoint"
+		if ($foundAoai.kind -eq 'OpenAI') {
+			$aoaiEndpoint = "https://$($aoaiName).openai.azure.com"
+			Write-Output "Detected Azure OpenAI account: $aoaiName (kind=OpenAI) -> $aoaiEndpoint"
+		} else {
+			$aoaiEndpoint = "https://$($aoaiName).cognitiveservices.azure.com"
+			Write-Output "Detected Cognitive Services account: $aoaiName (kind=$($foundAoai.kind)) -> $aoaiEndpoint"
+		}
 		$envVars['AOAI_ENDPOINT'] = $aoaiEndpoint
 
 		# Attempt to list deployments via az openai, else fallback to management REST

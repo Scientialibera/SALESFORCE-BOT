@@ -38,15 +38,19 @@ class AzureOpenAIClient:
     def __init__(self, settings: AzureOpenAISettings):
         """
         Initialize the Azure OpenAI client.
-        
         Args:
             settings: Azure OpenAI configuration settings
         """
+        # Force endpoint correction regardless of settings source
+        endpoint = settings.endpoint
+        if endpoint and ".cognitiveservices.azure.com" in endpoint:
+            endpoint = endpoint.replace(".cognitiveservices.azure.com", ".openai.azure.com")
+            logger.warning("Overriding AOAI endpoint to .openai.azure.com domain", original=settings.endpoint, corrected=endpoint)
+            settings.endpoint = endpoint
         self.settings = settings
         self._credential = AsyncDefaultAzureCredential()
         self._client: Optional[AsyncAzureOpenAI] = None
         self._token_cache: Optional[str] = None
-        
         logger.info(
             "Initializing Azure OpenAI client",
             endpoint=settings.endpoint,

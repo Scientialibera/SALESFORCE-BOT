@@ -3,7 +3,7 @@
 {"app_name": "salesforce-chatbot", "version": "1.0.0", "debug": false, "event": "Created FastAPI application"}
 {"version": "1.0.0", "event": "Starting Account Q&A Bot application"}
 {"event": "Initializing Azure service clients"}
-{"endpoint": "https://salesforcebot-aoai-eastus2.cognitiveservices.azure.com", "chat_deployment": "gpt-41-chat", "embedding_deployment": "text-embedding-3-small", "event": "Initializing Azure OpenAI client"}
+{"endpoint": "https://salesforcebot-aoai-eastus2.openai.azure.com", "chat_deployment": "gpt-41-chat", "embedding_deployment": "text-embedding-3-small", "event": "Initializing Azure OpenAI client"}
 {"event": "Azure OpenAI client initialized successfully"}
 {"endpoint": "https://salesforcebot-cosmos-sql.documents.azure.com:443/", "database": "appdb", "event": "Initializing Cosmos DB client"}
 {"event": "Cosmos DB client initialized successfully"}
@@ -25,3 +25,25 @@
 {"event": "Graph agent enabled"}
 {"event": "Agents will load functions dynamically from database"}
 {"event": "Application startup completed successfully"}
+{"request_id": "0d7e6042", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "user_agent": "curl/8.14.1", "event": "HTTP request started"}
+DEBUG: [0d7e6042] REQUEST START: POST http://localhost:8000/api/v1/chat
+DEBUG: [0d7e6042] Headers: {'host': 'localhost:8000', 'user-agent': 'curl/8.14.1', 'accept': '*/*', 'content-type': 'application/json', 'content-length': '196'}
+DEBUG: [0d7e6042] Tasks before request: 4
+DEBUG: [0d7e6042] Event loop running: True, closed: False
+DEBUG: [0d7e6042] About to call next middleware/handler
+{"url": "http://localhost:8000/api/v1/chat", "event": "Authenticating user request"}
+{"event": "Using fallback RBAC context"}
+{"event": "Fallback RBAC context created successfully"}
+{"session_id": "direct-test-1", "turn_id": "13345fe1-6d41-4e4e-9786-c36e285bed1a", "user_id": "dev-user", "message_length": 15, "event": "Processing chat message"}
+{"event": "Created Cosmos DB client with managed identity"}
+{"chat_id": "direct-test-1", "user_id": "user@example.com", "event": "Chat history not found"}
+{"endpoint": "https://salesforcebot-aoai-eastus2.openai.azure.com", "deployment": "gpt-41-chat", "event": "Created Azure OpenAI client with managed identity token"}
+{"session_id": "direct-test-1", "turn_id": "13345fe1-6d41-4e4e-9786-c36e285bed1a", "user_message": "Tell me a joke.", "assistant_response": "Why did the scarecrow win an award?\n\nBecause he was outstanding in his field!", "event": "Dev mode: Skipping conversation turn save"}
+{"session_id": "direct-test-1", "turn_id": "13345fe1-6d41-4e4e-9786-c36e285bed1a", "response_length": 77, "sources_count": 0, "event": "Chat message processed successfully"}
+DEBUG: [0d7e6042] Handler completed successfully
+DEBUG: [0d7e6042] Response status: 200
+DEBUG: [0d7e6042] Tasks after request: 5
+DEBUG: [0d7e6042] Event loop running: True, closed: False
+{"request_id": "0d7e6042", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "status_code": 200, "duration_ms": 6007, "event": "HTTP request completed"}
+DEBUG: [0d7e6042] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:60138 - "POST /api/v1/chat HTTP/1.1" 200 OK

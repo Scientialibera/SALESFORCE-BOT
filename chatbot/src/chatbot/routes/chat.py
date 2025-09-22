@@ -355,12 +355,21 @@ async def send_message(
                 "completion_tokens": len(assistant_response.split()),
                 "total_tokens": len(user_message.split()) + len(assistant_response.split())
             }
-        
+        # Sanitize usage dict: only allow int values (flatten or skip dicts)
+        usage_clean = {}
+        for k, v in usage.items():
+            if isinstance(v, int):
+                usage_clean[k] = v
+            elif isinstance(v, dict):
+                # Try to extract a sum or a main value if possible, else skip
+                int_values = [val for val in v.values() if isinstance(val, int)]
+                if int_values:
+                    usage_clean[k] = sum(int_values)
         return ChatResponse(
             session_id=session_id,
             turn_id=turn_id,
             choices=choices,
-            usage=usage,
+            usage=usage_clean,
             sources=sources,
             metadata=metadata,
         )

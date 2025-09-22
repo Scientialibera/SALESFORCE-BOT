@@ -16,6 +16,13 @@ class AzureOpenAISettings(BaseSettings):
     """Azure OpenAI service configuration."""
     
     endpoint: str = Field(..., description="Azure OpenAI service endpoint")
+
+    @validator("endpoint", pre=True, always=True)
+    def ensure_openai_domain(cls, v):
+        # Force correct domain for Azure OpenAI endpoint
+        if v and ".cognitiveservices.azure.com" in v:
+            v = v.replace(".cognitiveservices.azure.com", ".openai.azure.com")
+        return v
     api_version: str = Field(default="2024-02-15-preview", description="API version")
     chat_deployment: str = Field(..., description="Chat completion deployment name")
     embedding_deployment: str = Field(..., description="Text embedding deployment name")
