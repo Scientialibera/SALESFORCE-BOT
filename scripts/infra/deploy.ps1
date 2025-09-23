@@ -301,8 +301,8 @@ $cosmosGraphEp = az cosmosdb show -g $Rg -n $CosmosGraph --query documentEndpoin
 
 # RBAC for MI on Cosmos (data-plane)
 if ($aoaiCreated) {
-  Ensure-Role $miPid $cosmosSqlId   "Cosmos DB Built-in Data Contributor"
-  Ensure-Role $miPid $cosmosGraphId "Cosmos DB Built-in Data Contributor"
+  Ensure-Role $miPid $cosmosSqlId   "Azure AI Administrator"
+  Ensure-Role $miPid $cosmosGraphId "Azure AI Administrator"
 }
 
 # -------------------- Full mode: APIM + AFD --------------------
