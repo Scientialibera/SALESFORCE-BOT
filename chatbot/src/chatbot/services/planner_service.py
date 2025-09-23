@@ -196,3 +196,72 @@ class PlannerService:
                 "execution_plan": [],
                 "error": str(e)
             }
+
+    async def generate_final_response(
+        self,
+        user_request: str,
+        agent_summary: str,
+        rbac_context: RBACContext,
+    ) -> Dict[str, Any]:
+        """
+        Generate final response after agent execution (MVP pattern).
+
+        This method takes the user request and agent execution summary,
+        then asks the planner to provide a final natural language response.
+
+        Args:
+            user_request: Original user request
+            agent_summary: Markdown summary of agent requests and responses
+            rbac_context: User's RBAC context
+
+        Returns:
+            Dictionary with final assistant response
+        """
+        try:
+            # Get planner system prompt
+            try:
+                planner_system = await self.prompts_repo.get_system_prompt("planner_system")
+            except Exception as e:
+                logger.error("Failed to get planner system prompt", error=str(e))
+                planner_system = "You are a planner service for a Salesforce Q&A chatbot. Provide comprehensive responses based on the data retrieved by your agents."
+
+            # Build conversation with agent results injected (MVP pattern)
+            planner_messages = [
+                {"role": "system", "content": planner_system},
+                {"role": "user", "content": user_request},
+                {"role": "assistant", "content": agent_summary},
+                {"role": "user", "content": "Using the information above, provide the final answer to the user."}
+            ]
+
+            # Call planner for final response (no tools needed)
+            final_resp = await self.aoai_client.create_chat_completion(
+                messages=planner_messages,
+                tools=None,
+                tool_choice=None,
+            )
+
+            # Extract final response
+            final_message = (final_resp.get("choices") or [{}])[0].get("message", {})
+            assistant_content = final_message.get("content", "")
+
+            logger.info(
+                "Generated final response",
+                user_id=rbac_context.user_id,
+                response_length=len(assistant_content)
+            )
+
+            return {
+                "assistant_message": assistant_content,
+                "raw_response": final_resp
+            }
+
+        except Exception as e:
+            logger.error(
+                "Final response generation failed",
+                user_id=rbac_context.user_id,
+                error=str(e)
+            )
+            return {
+                "assistant_message": "I apologize, but I encountered an error while generating the final response. Please try again.",
+                "error": str(e)
+            }

@@ -208,8 +208,6 @@ async def lifespan(app: FastAPI):
             app_state.unified_data_service,
             confidence_threshold=settings.account_resolver.confidence_threshold,
             max_suggestions=settings.account_resolver.max_candidates,
-            tfidf_threshold=0.3,
-            use_tfidf=True,
         )
         logger.info("Account resolver service initialized", confidence_threshold=settings.account_resolver.confidence_threshold)
 
@@ -226,8 +224,7 @@ async def lifespan(app: FastAPI):
 
         app_state.graph_service = GraphService(
             app_state.gremlin_client,
-            app_state.unified_data_service,
-            app_state.fabric_client
+            dev_mode=settings.dev_mode
         )
 
         # Initialize embedding utils
@@ -614,6 +611,13 @@ def get_unified_data_service():
     if not uds:
         raise HTTPException(status_code=503, detail="Unified data service not available")
     return uds
+
+
+def get_planner_service():
+    """Get planner service dependency."""
+    if not app_state.planner_service:
+        raise HTTPException(status_code=503, detail="Planner service not available")
+    return app_state.planner_service
 
 
 # Dependency injection functions for agents
