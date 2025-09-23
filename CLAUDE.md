@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a Salesforce Account Q&A Bot built with a planner-first agentic architecture. The system operates on processed data from Microsoft Fabric lakehouse rather than live Salesforce/SharePoint connections.
 
 **Key Components:**
-- **Chatbot** (`chatbot/`): FastAPI-based chat API with planner orchestrator
+- **Chatbot** (`chatbot/`): FastAPI-based chat API with planner orchestrator. This is what you must focus on.
 - **Indexer** (`indexer/`): Document processing and vector store management
 - **Scripts** (`scripts/`): Infrastructure and deployment automation
 
@@ -42,16 +42,6 @@ python -m chatbot.main
 uvicorn chatbot.main:app --reload
 ```
 
-### Indexer Service
-```bash
-cd indexer/
-# Install dependencies
-pip install -r requirements.txt
-
-# Run indexer
-python -m indexer.main
-```
-
 ## Code Architecture
 
 ### Data Flow
@@ -65,7 +55,7 @@ python -m indexer.main
 **Chatbot (`chatbot/src/chatbot/`)**:
 - `app.py`: Main FastAPI application and planner orchestration
 - `agents/`: SQL and Graph agents for data retrieval
-- `services/`: Business logic layer with RBAC enforcement
+- `services/`: Business logic. Services to do account resolve, call graph, sql, etc.
 - `repositories/`: Data access layer for lakehouse and Cosmos DB
 - `clients/`: Azure SDK clients (OpenAI, Cosmos, Search, etc.)
 - `config/`: Environment configuration management
@@ -86,20 +76,9 @@ python -m indexer.main
 - No client secrets stored in code or config
 - RBAC enforced at SQL service layer via user identity claims
 
-### Key Dependencies
-- **FastAPI**: Web framework for chatbot API
-- **Semantic Kernel**: LLM orchestration and planning
-- **Azure SDK**: OpenAI, Cosmos DB, AI Search, Key Vault, Storage
-- **pyodbc**: SQL connectivity to Fabric lakehouse
-- **gremlinpython**: Cosmos DB Gremlin API for graph queries
-
 ## Environment Configuration
 
-Required environment variables (endpoints only, no secrets):
-- `AOAI_ENDPOINT`, `AOAI_DEPLOYMENT`, `AOAI_EMBEDDING_DEPLOYMENT`
-- `COSMOS_ENDPOINT`, `COSMOS_DB`, `COSMOS_CONTAINER`
-- `SEARCH_ENDPOINT`, `SEARCH_INDEX`
-- `FABRIC_WAREHOUSE_ENDPOINT` (lakehouse SQL endpoint)
+.env file at root of project folder.  C:\Users\emili\Documents\SALESFORCE-BOT\.env
 
 ## Important Guidelines
 
@@ -110,10 +89,8 @@ Required environment variables (endpoints only, no secrets):
 - Always write full, complete code implementations
 
 ### RBAC & Security
-- RBAC enforcement happens at the service layer (SQL query construction)
-- Agents receive pre-resolved account IDs and execute queries within scope
-- Account resolver runs once per request with confidence scoring
-- Dev mode disables RBAC for testing with dummy data
+- RBAC enforcement happens at API call time and expression building (SQL/Graph query construction)
+- Dev mode disables RBAC for testing with dummy data for SQL (Fabric endpoint) but all other services MUST be used (graph, cosmos, etc)
 
 ### Agent Responsibilities
 - **SQL Agent**: Executes parameterized queries against lakehouse SQL endpoint

@@ -82,14 +82,14 @@
 
 ```json
 {
-  "id": "chatcmpl-CIoInMfUKf0ny2KcQA01okxxFBXQb",
+  "id": "chatcmpl-CIwRyro7d0RsL0TCHsakCYZjoiP6Y",
   "choices": [
     {
       "finish_reason": "stop",
       "index": 0,
       "logprobs": null,
       "message": {
-        "content": "I'm doing well, thank you! How can I assist you with your Salesforce data or account analysis today?",
+        "content": "I'm doing well, thank you! How can I assist you with your Salesforce data or account questions today?",
         "refusal": null,
         "role": "assistant",
         "annotations": [],
@@ -117,11 +117,11 @@
       }
     }
   ],
-  "created": 1758599301,
+  "created": 1758630622,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
-  "system_fingerprint": "fp_c79ab13e31",
+  "system_fingerprint": "fp_9ab7d013ff",
   "usage": {
     "completion_tokens": 23,
     "prompt_tokens": 648,
@@ -165,7 +165,7 @@
 
 ### Planner Assistant Answer
 
-I'm doing well, thank you! How can I assist you with your Salesforce data or account analysis today?
+I'm doing well, thank you! How can I assist you with your Salesforce data or account questions today?
 
 ---
 
@@ -251,7 +251,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
 
 ```json
 {
-  "id": "chatcmpl-CIoInwfT3lD774B6mVTdlTDM6lwnL",
+  "id": "chatcmpl-CIwRzubrSN6E56rNmWWODEv6ZjxOW",
   "choices": [
     {
       "finish_reason": "tool_calls",
@@ -266,7 +266,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
         "function_call": null,
         "tool_calls": [
           {
-            "id": "call_knBeeLv81x8z221lP1Qo6K1H",
+            "id": "call_s3Wa7rq704ocuiDm4edi6bFy",
             "function": {
               "arguments": "{\"query\": \"Retrieve all sales data for Microsoft and its related accounts.\", \"accounts_mentioned\": [\"Microsoft\"]}",
               "name": "sql_agent"
@@ -274,7 +274,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
             "type": "function"
           },
           {
-            "id": "call_l1upvEW4fqOPuffk3KJb1di0",
+            "id": "call_uDCPmz8aafpOWp2CbjxSJMz4",
             "function": {
               "arguments": "{\"query\": \"Show all account relationships for Microsoft.\", \"accounts_mentioned\": [\"Microsoft\"]}",
               "name": "graph_agent"
@@ -286,11 +286,11 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
       "content_filter_results": {}
     }
   ],
-  "created": 1758599301,
+  "created": 1758630623,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
-  "system_fingerprint": "fp_c79ab13e31",
+  "system_fingerprint": "fp_9ab7d013ff",
   "usage": {
     "completion_tokens": 73,
     "prompt_tokens": 652,
@@ -457,7 +457,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
 
 ```json
 {
-  "id": "chatcmpl-CIoIoZEHPCnKnGXx2uOXmibk8YIYm",
+  "id": "chatcmpl-CIwS08mjG4ygRTijo6qFiHQwdnuem",
   "choices": [
     {
       "finish_reason": "tool_calls",
@@ -472,7 +472,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
         "function_call": null,
         "tool_calls": [
           {
-            "id": "call_OIQ1AcFgqiPaD0K6fXIny4OJ",
+            "id": "call_Z5qKv2ZHWtEu38ImH3P75neh",
             "function": {
               "arguments": "{\"account_name\":\"Microsoft\",\"relationship_type\":\"partner\",\"max_depth\":2}",
               "name": "graph_agent_function"
@@ -484,7 +484,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
       "content_filter_results": {}
     }
   ],
-  "created": 1758599302,
+  "created": 1758630624,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
@@ -650,7 +650,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
 
 ```json
 {
-  "id": "chatcmpl-CIoIpfkEkWGTMCXZkO04feOZePMkE",
+  "id": "chatcmpl-CIwS1qK2DofoOeNp9guJ92fHSTvhy",
   "choices": [
     {
       "finish_reason": "tool_calls",
@@ -665,7 +665,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
         "function_call": null,
         "tool_calls": [
           {
-            "id": "call_LpKVcindUWsODBHbyOJByWGn",
+            "id": "call_LgPLPzjdaVr9XIkC0ppi0DHv",
             "function": {
               "arguments": "{\"account_name\":\"Microsoft\"}",
               "name": "graph_agent_function"
@@ -677,7 +677,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
       "content_filter_results": {}
     }
   ],
-  "created": 1758599303,
+  "created": 1758630625,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
@@ -814,7 +814,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
 
 ```json
 {
-  "id": "chatcmpl-CIoIq3ICEaQETvFfHeyP63x4ckQsA",
+  "id": "chatcmpl-CIwS2rnpJOF4dCDH1VwK9ZC4GIiLP",
   "choices": [
     {
       "finish_reason": "tool_calls",
@@ -829,7 +829,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
         "function_call": null,
         "tool_calls": [
           {
-            "id": "call_am1OI6pp0EnPAVaPFPrbtMw2",
+            "id": "call_yXYYIa33QwOkTZmu39XFypP8",
             "function": {
               "arguments": "{\"query\":\"Retrieve all sales data across all accounts.\",\"accounts_mentioned\":null}",
               "name": "sql_agent"
@@ -841,11 +841,11 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
       "content_filter_results": {}
     }
   ],
-  "created": 1758599304,
+  "created": 1758630626,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
-  "system_fingerprint": "fp_c79ab13e31",
+  "system_fingerprint": "fp_9ab7d013ff",
   "usage": {
     "completion_tokens": 27,
     "prompt_tokens": 646,
@@ -1007,7 +1007,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
 
 ```json
 {
-  "id": "chatcmpl-CIoIrhc5a10e5hO2njuePE3zkRJoS",
+  "id": "chatcmpl-CIwS3KccXx2BZGSmG8OA6KqVXlMZQ",
   "choices": [
     {
       "finish_reason": "tool_calls",
@@ -1022,9 +1022,9 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
         "function_call": null,
         "tool_calls": [
           {
-            "id": "call_08N5O3OwQj0bfYMyQOK6Fc0y",
+            "id": "call_ZmIx46FIMBSoumSpwZuIFMaR",
             "function": {
-              "arguments": "{\"query\":\"SELECT AccountId, AccountName, OpportunityId, OpportunityName, StageName, Amount, CloseDate FROM Opportunities ORDER BY CloseDate DESC\",\"limit\":100}",
+              "arguments": "{\"query\":\"SELECT AccountName, OpportunityName, Stage, Amount, CloseDate FROM Opportunities ORDER BY CloseDate DESC\",\"limit\":100}",
               "name": "sql_query_function"
             },
             "type": "function"
@@ -1034,15 +1034,15 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
       "content_filter_results": {}
     }
   ],
-  "created": 1758599305,
+  "created": 1758630627,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
   "system_fingerprint": "fp_c79ab13e31",
   "usage": {
-    "completion_tokens": 46,
+    "completion_tokens": 39,
     "prompt_tokens": 576,
-    "total_tokens": 622,
+    "total_tokens": 615,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -1084,7 +1084,7 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
 
 - Tool Call → sql_query_function
 
-  Arguments: {"query":"SELECT AccountId, AccountName, OpportunityId, OpportunityName, StageName, Amount, CloseDate FROM Opportunities ORDER BY CloseDate DESC","limit":100}
+  Arguments: {"query":"SELECT AccountName, OpportunityName, Stage, Amount, CloseDate FROM Opportunities ORDER BY CloseDate DESC","limit":100}
 
 
 ---
