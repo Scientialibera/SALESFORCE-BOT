@@ -17,9 +17,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt as jose_jwt
 from pydantic import BaseModel, Field
 
-from chatbot.models.message import Message, MessageRole, ConversationTurn, Citation, CitationSource
+from chatbot.models.message import Message, MessageRole, Citation, CitationSource
 from chatbot.models.rbac import RBACContext, AccessScope
-from chatbot.models.plan import Plan, PlanType
 from chatbot.services.unified_service import UnifiedDataService
 from chatbot.config.settings import settings
 
