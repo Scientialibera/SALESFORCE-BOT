@@ -57,18 +57,12 @@ def _mask(val: str) -> str:
         return val[0] + '***'
     return val[:4] + '...' + val[-4:]
 
-print('\n[init_data] Effective environment (masked):')
-print('  CONTAINER_APP_RESOURCE_GROUP =', _mask(os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')))
-print('  COSMOS_ENDPOINT =', _mask(os.environ.get('COSMOS_ENDPOINT') or os.environ.get('AZURE_COSMOS_GREMLIN_ENDPOINT')))
-print('  AZURE_COSMOS_GREMLIN_ENDPOINT =', _mask(os.environ.get('AZURE_COSMOS_GREMLIN_ENDPOINT')))
-print('  AZURE_COSMOS_GREMLIN_DATABASE =', _mask(os.environ.get('AZURE_COSMOS_GREMLIN_DATABASE')))
-print('  AZURE_COSMOS_GREMLIN_GRAPH =', _mask(os.environ.get('AZURE_COSMOS_GREMLIN_GRAPH')))
-print('  MOCK_EMBEDDINGS =', os.environ.get('MOCK_EMBEDDINGS'))
-print('  CONTAINER_APP_RESOURCE_GROUP =', _mask(os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')))
-print('  COSMOS_ENDPOINT =', _mask(os.environ.get('COSMOS_ENDPOINT') or os.environ.get('AZURE_COSMOS_GREMLIN_ENDPOINT')))
-print('  AZURE_COSMOS_GREMLIN_ENDPOINT =', _mask(os.environ.get('AZURE_COSMOS_GREMLIN_ENDPOINT')))
-print('  AZURE_COSMOS_GREMLIN_DATABASE =', _mask(os.environ.get('AZURE_COSMOS_GREMLIN_DATABASE')))
-print('  AZURE_COSMOS_GREMLIN_GRAPH =', _mask(os.environ.get('AZURE_COSMOS_GREMLIN_GRAPH')))
+print('\n[init_data] Effective environment:')
+print('  CONTAINER_APP_RESOURCE_GROUP =', os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP'))
+print('  COSMOS_ENDPOINT =', os.environ.get('COSMOS_ENDPOINT') or os.environ.get('AZURE_COSMOS_GREMLIN_ENDPOINT'))
+print('  AZURE_COSMOS_GREMLIN_ENDPOINT =', os.environ.get('AZURE_COSMOS_GREMLIN_ENDPOINT'))
+print('  AZURE_COSMOS_GREMLIN_DATABASE =', os.environ.get('AZURE_COSMOS_GREMLIN_DATABASE'))
+print('  AZURE_COSMOS_GREMLIN_GRAPH =', os.environ.get('AZURE_COSMOS_GREMLIN_GRAPH'))
 print('  MOCK_EMBEDDINGS =', os.environ.get('MOCK_EMBEDDINGS'))
 print()
 # ---------------------------------------------------------------

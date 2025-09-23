@@ -67,16 +67,24 @@ class GremlinSettings(BaseSettings):
     configured endpoint and skip initializing Gremlin clients when it is None.
     """
 
-    endpoint: Optional[str] = Field(default=None, description="Gremlin endpoint")
+    # Accept the AZURE_COSMOS_GREMLIN_ENDPOINT environment variable used by
+    # the repository scripts (`set_env.ps1`, `.env`) as the authoritative
+    # Gremlin endpoint. Use `alias` so pydantic will populate `endpoint`
+    # from that env var name.
+    endpoint: Optional[str] = Field(default=None, description="Gremlin endpoint", alias='AZURE_COSMOS_GREMLIN_ENDPOINT')
     database_name: str = Field(default="graphdb", description="Graph database name")
     graph_name: str = Field(default="account_graph", description="Graph container name")
     max_concurrent_connections: int = Field(default=10, description="Max concurrent connections")
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")
 
     class Config:
+        # Allow reading from AZURE_COSMOS_GREMLIN_ENDPOINT as the canonical
+        # environment variable while preserving backward-compatibility for
+        # any future GREMLIN_ prefixed vars.
         env_prefix = "GREMLIN_"
         env_file = ".env"
         extra = "ignore"
+        allow_population_by_field_name = True
 
 
 class SearchSettings(BaseSettings):

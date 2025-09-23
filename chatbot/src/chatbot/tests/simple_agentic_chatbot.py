@@ -17,6 +17,7 @@ from chatbot.clients.aoai_client import AzureOpenAIClient
 from chatbot.repositories.agent_functions_repository import AgentFunctionsRepository
 from chatbot.repositories.prompts_repository import PromptsRepository
 from chatbot.services.rbac_service import RBACService
+from chatbot.services.account_resolver_service import AccountResolverService_
 from chatbot.models.rbac import RBACContext, AccessScope
 
 
@@ -220,17 +221,50 @@ async def run_test():
                     continue
 
                 # Agent tools: load from repo and wrap as tools (no fallbacks, no execution)
+                # Use strict matching so `sql_agent` only loads functions intended
+                # for that agent (e.g. `sql_agent_function`). Exclude any
+                # agent documents (names that end with '_agent').
                 tools_raw = await agent_funcs_repo.get_functions_by_agent(agent_name)
+                # If the repo returned nothing, fall back to listing everything
+                # and then filter by name/metadata heuristics.
+                if not tools_raw:
+                    all_funcs = await agent_funcs_repo.list_all_functions()
+                    tools_raw = all_funcs
+
                 agent_function_defs: List[Dict[str, Any]] = []
+
+                def _matches_agent(tool, agent_name: str) -> bool:
+                    name = getattr(tool, "name", "") or ""
+                    # Exclude agent documents themselves
+                    if name.endswith("_agent"):
+                        return False
+                    # Exact match
+                    if name == agent_name:
+                        return True
+                    # Common pattern: '<agent>_function' or contains agent name
+                    if agent_name in name:
+                        return True
+                    # Check metadata 'agents' list if present
+                    meta_agents = (getattr(tool, "metadata", {}) or {}).get("agents")
+                    if isinstance(meta_agents, (list, tuple)) and agent_name in meta_agents:
+                        return True
+                    return False
+
+                loaded_names: List[str] = []
                 for t in tools_raw:
                     if not getattr(t, "name", None) or not getattr(t, "parameters", None):
+                        continue
+                    if not _matches_agent(t, agent_name):
                         continue
                     agent_function_defs.append({
                         "name": t.name,
                         "description": getattr(t, "description", "") or "",
                         "parameters": t.parameters,
                     })
+                    loaded_names.append(t.name)
+
                 agent_tools = to_tools(agent_function_defs) if agent_function_defs else None
+                md_lines.append(f"### Agent Tools Loaded for {agent_name}: {loaded_names}\n")
 
                 # Agent query from planner args (best-effort)
                 try:
@@ -238,6 +272,42 @@ async def run_test():
                 except Exception:
                     planner_args = {}
                 agent_query = planner_args.get("query") or q
+
+                # If planner provided accounts_mentioned, resolve them (dev-mode dummy resolver)
+                accounts_mentioned = planner_args.get("accounts_mentioned")
+                print(f"Accounts mentioned by planner for {agent_name}: {accounts_mentioned}")
+                resolved_account_names: List[str] = []
+                if accounts_mentioned:
+                    try:
+                        # Use the dev-mode AccountResolverService_ to map names to Account objects
+                        resolved_accounts = await AccountResolverService_.resolve_account_names(accounts_mentioned, rbac_ctx)
+
+                        def _extract_id_name(item) -> tuple:
+                            # Support either pydantic Account objects or plain dicts
+                            try:
+                                if isinstance(item, dict):
+                                    _id = item.get("id") or item.get("account_id")
+                                    _name = item.get("name") or item.get("account_name")
+                                else:
+                                    _id = getattr(item, "id", None)
+                                    _name = getattr(item, "name", None)
+                                return _id, _name
+                            except Exception:
+                                return None, None
+
+                        for a in resolved_accounts or []:
+                            _id, _name = _extract_id_name(a)
+                            if _name:
+                                resolved_account_names.append(_name)
+
+                        print(f"### Resolved Accounts for {agent_name}: {resolved_account_names}\n")
+                    except Exception as e:
+                        print(f"**Account resolution failed:** {e}\n")
+
+                # If we resolved exact account ids, append them to the agent system prompt so
+                # the agent has deterministic ids to work with.
+                if resolved_account_names:
+                    agent_system = agent_system + "\n\nExact Account id values: " + ",".join(resolved_account_names)
 
                 agent_messages: List[Dict[str, Any]] = [
                     {"role": "system", "content": agent_system},

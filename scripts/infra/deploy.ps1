@@ -104,17 +104,23 @@ $swaUrl  = "https://$swaHost"
 
 # -------------------- Azure OpenAI (eastus2 for quota) --------------------
 Write-Host ">>> Azure OpenAI + $OpenAiModel" -ForegroundColor Cyan
-$aoaiLoc = "eastus2"   # eastus2 has available quota
-$AoaiName = "$BaseName-aoai-eastus2"  # Use the working account name
+$aoaiLoc = "eastus2"  # eastus2 has available quota always
+$AoaiName = "$BaseName-aoai-eastus2"  # This is the Azure resource name. It must be unique within the resource group.
 $aoaiCreated = $false
 
 if (-not (Exists @("cognitiveservices","account","show","-g",$Rg,"-n",$AoaiName))) {
   try {
     Write-Host "Creating Azure OpenAI account: $AoaiName in $aoaiLoc..." -ForegroundColor Yellow
-    # Correct CLI shape; do NOT pass a value to --assign-identity
+    Write-Host "Attempting to set custom subdomain to: $AoaiSubdomain" -ForegroundColor Yellow
+    
     az cognitiveservices account create `
-      --name $AoaiName --resource-group $Rg --location $aoaiLoc `
-      --kind OpenAI --sku S0 --yes -o none
+      --name $AoaiName `
+      --resource-group $Rg `
+      --location $aoaiLoc `
+      --kind OpenAI `
+      --sku S0 `
+      --custom-subdomain $AoaiName
+      --yes -o none
     
     # Verify creation was successful
     $testAccount = az cognitiveservices account show -g $Rg -n $AoaiName -o json 2>$null | ConvertFrom-Json
@@ -161,14 +167,14 @@ if ($aoaiCreated) {
   $aoaiEndpoint = "https://eastus2.api.cognitive.microsoft.com/"
 
   # Model deployment (idempotent) - check if specific deployment name exists
-  $deploymentName = "gpt-41-chat"  # Use working deployment name
+  $deploymentName = $OpenAiModel  # Use working deployment name
   $existingDep = az cognitiveservices account deployment show -g $Rg -n $AoaiName --deployment-name $deploymentName -o json 2>$null | ConvertFrom-Json
   if (-not $existingDep) {
     try {
       Write-Host "Deploying model $OpenAiModel as $deploymentName..." -ForegroundColor Yellow
       az cognitiveservices account deployment create -g $Rg -n $AoaiName --deployment-name $deploymentName `
         --model-name $OpenAiModel --model-version $OpenAiModelVersion --model-format OpenAI `
-        --sku-capacity 10 --sku-name GlobalStandard -o none
+        --sku-capacity 50 --sku-name GlobalStandard -o none
       Write-Host "Model deployment created successfully" -ForegroundColor Green
     } catch {
       Write-Warning "Failed to deploy model: $($_.Exception.Message)"

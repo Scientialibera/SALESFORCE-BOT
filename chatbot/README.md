@@ -26,7 +26,7 @@ User Query → Chatbot → SQL Agent (Fabric) + Graph Agent (Cosmos) → Respons
 
 ### Technology Stack
 
-- **AI/ML**: Azure OpenAI (GPT-4o, text-embedding-3-small), Semantic Kernel 0.9.1b1
+- **AI/ML**: Azure OpenAI (GPT-4.1, text-embedding-3-small), Semantic Kernel 0.9.1b1
 - **Backend**: FastAPI, Python 3.11+, Pydantic, structlog
 - **Authentication**: Azure Active Directory, DefaultAzureCredential
 - **Data Sources**: 

@@ -10,6 +10,7 @@ still pass an `aoai_client` argument to the constructor (it will be ignored).
 """
 
 import structlog
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from chatbot.agents.filters.account_resolver_filter import AccountResolverFilter
@@ -168,6 +169,8 @@ class AccountResolverService:
                     account_type=acc_dict.get("type", "unknown"),
                     owner_user_id="system",
                     owner_email="system@example.com",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
                 )
                 confidence = acc_dict.get("similarity_score", 0.0)
                 confidences.append(confidence)
@@ -275,7 +278,16 @@ class AccountResolverService:
                     similar_accounts = self.tfidf_filter.find_similar_accounts(query=account_name, rbac_context=rbac_context, top_k=1)
                     if similar_accounts:
                         best_match_dict = similar_accounts[0]
-                        best_match = Account(id=best_match_dict["id"], name=best_match_dict["name"], display_name=best_match_dict["name"], account_type=best_match_dict.get("type", "unknown"), owner_user_id="system", owner_email="system@example.com")
+                        best_match = Account(
+                            id=best_match_dict["id"],
+                            name=best_match_dict["name"],
+                            display_name=best_match_dict["name"],
+                            account_type=best_match_dict.get("type", "unknown"),
+                            owner_user_id="system",
+                            owner_email="system@example.com",
+                            created_at=datetime.utcnow(),
+                            updated_at=datetime.utcnow(),
+                        )
                         logger.info("Account resolved via TF-IDF", input_name=account_name, resolved_name=best_match.name, confidence=best_match_dict.get("similarity_score", 0.0))
 
                 # Final fallback: fuzzy string matching
@@ -335,6 +347,8 @@ class AccountResolverService:
                     account_type="Enterprise",
                     owner_user_id=rbac_context.user_id,
                     owner_email=rbac_context.email,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
                 ),
                 Account(
                     id="2",
@@ -343,6 +357,8 @@ class AccountResolverService:
                     account_type="Enterprise",
                     owner_user_id=rbac_context.user_id,
                     owner_email=rbac_context.email,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
                 ),
                 Account(
                     id="3",
@@ -351,6 +367,8 @@ class AccountResolverService:
                     account_type="Enterprise",
                     owner_user_id=rbac_context.user_id,
                     owner_email=rbac_context.email,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
                 ),
             ]
 
@@ -387,6 +405,8 @@ class AccountResolverService_:
                 account_type="Enterprise",
                 owner_user_id=rbac_context.user_id,
                 owner_email=rbac_context.email,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
             ),
             Account(
                 id="2",
@@ -395,6 +415,8 @@ class AccountResolverService_:
                 account_type="Enterprise",
                 owner_user_id=rbac_context.user_id,
                 owner_email=rbac_context.email,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
             ),
             Account(
                 id="3",
@@ -403,6 +425,8 @@ class AccountResolverService_:
                 account_type="Enterprise",
                 owner_user_id=rbac_context.user_id,
                 owner_email=rbac_context.email,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
             ),
         ]
         return demo_accounts

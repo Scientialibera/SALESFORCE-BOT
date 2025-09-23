@@ -174,7 +174,7 @@ if ($ResourceGroup) {
 		$deployments = $null
 		try {
 			Write-Output "Attempting to list deployments via 'az openai deployment list'..."
-			$raw = az openai deployment list --resource-group $ResourceGroup --resource-name $aoaiName -o json 2>$null
+			$raw = az cognitiveservices account deployment list --resource-group $ResourceGroup --name $aoaiName -o json 2>$null
 			if ($raw) { $deployments = $raw | ConvertFrom-Json }
 		} catch {
 			Write-Output "'az openai' not available; trying REST fallback."
@@ -191,9 +191,12 @@ if ($ResourceGroup) {
 			}
 		}
 
+		# Priority-aware selection: collect candidates then pick by preferred model order
 		$chatDeployment = $null
 		$embedDeployment = $null
 		if ($deployments) {
+			$chatCandidates = @()
+			$embedCandidates = @()
 			foreach ($d in $deployments) {
 				$dName = $d.name
 				$model = $null
@@ -201,10 +204,34 @@ if ($ResourceGroup) {
 				elseif ($d.properties -and $d.properties.model) { $model = $d.properties.model }
 				if (-not $model) { continue }
 				$lm = $model.ToString().ToLower()
-				if (-not $chatDeployment -and ($lm -match 'gpt' -or $lm -match 'chat' -or $lm -match 'turbo')) { $chatDeployment = $dName }
-				if (-not $embedDeployment -and ($lm -match 'embed' -or $lm -match 'text-embedding')) { $embedDeployment = $dName }
-				if ($chatDeployment -and $embedDeployment) { break }
+
+				if ($lm -match 'embed' -or $lm -match 'text-embedding') {
+					$embedCandidates += @{ name = $dName; model = $lm }
+				} elseif ($lm -match 'gpt' -or $lm -match 'chat' -or $lm -match 'turbo') {
+					$chatCandidates += @{ name = $dName; model = $lm }
+				}
 			}
+
+			# Preferred chat model order (higher priority first)
+			$preferredChat = @('gpt-4.1','gpt-4o','gpt-4','gpt-3.5','gpt')
+			foreach ($p in $preferredChat) {
+				foreach ($c in $chatCandidates) {
+					if ($c.model -like "*$p*") { $chatDeployment = $c.name; break }
+				}
+				if ($chatDeployment) { break }
+			}
+			# Fallback to first candidate if no preferred match
+			if (-not $chatDeployment -and $chatCandidates.Count -gt 0) { $chatDeployment = $chatCandidates[0].name }
+
+			# Preferred embedding order
+			$preferredEmbed = @('text-embedding-3-large','text-embedding-3-small','text-embedding-3','embedding','text-embedding')
+			foreach ($p in $preferredEmbed) {
+				foreach ($e in $embedCandidates) {
+					if ($e.model -like "*$p*") { $embedDeployment = $e.name; break }
+				}
+				if ($embedDeployment) { break }
+			}
+			if (-not $embedDeployment -and $embedCandidates.Count -gt 0) { $embedDeployment = $embedCandidates[0].name }
 		}
 
 		if ($chatDeployment) { $envVars['AOAI_CHAT_DEPLOYMENT'] = $chatDeployment; Write-Output "Detected chat deployment: $chatDeployment" }
