@@ -927,4 +927,19 @@ I'm doing well, thank you! How can I assist you with your Salesforce data or acc
         },
         "violence": {
           "filtered": false,
-     
+          "severity": "safe"
+        }
+      }
+    }
+  ]
+}
+```
+
+### Agent Tool Calls (not executed)
+
+- Tool Call → sql_agent_function
+
+  Arguments: {"query":"SELECT AccountId, AccountName, OpportunityId, OpportunityName, StageName, Amount, CloseDate FROM Opportunities ORDER BY CloseDate DESC","limit":100}
+
+
+---

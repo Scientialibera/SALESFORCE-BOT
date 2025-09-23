@@ -307,7 +307,7 @@ async def run_test():
                 # If we resolved exact account ids, append them to the agent system prompt so
                 # the agent has deterministic ids to work with.
                 if resolved_account_names:
-                    agent_system = agent_system + "\n\nExact Account id values: " + ",".join(resolved_account_names)
+                    agent_system = agent_system + "\n\nExact Account name values: " + ",".join(resolved_account_names)
 
                 agent_messages: List[Dict[str, Any]] = [
                     {"role": "system", "content": agent_system},
