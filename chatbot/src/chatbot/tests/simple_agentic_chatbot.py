@@ -19,6 +19,7 @@ from chatbot.repositories.prompts_repository import PromptsRepository
 from chatbot.services.rbac_service import RBACService
 from chatbot.services.account_resolver_service import AccountResolverService_
 from chatbot.models.rbac import RBACContext, AccessScope
+from chatbot.services.sql_service import SQLService
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -347,6 +348,53 @@ async def run_test():
                         atc_name, atc_args = get_call_name_args(atc)
                         md_lines.append(f"- Tool Call → {atc_name}\n")
                         md_lines.append(f"  Arguments: {atc_args}\n\n")
+
+                # --- New: If agent made tool calls to SQL functions, try to execute them using SQLService ---
+                try:
+                    sql_service = SQLService(
+                        aoai_client,
+                        None,
+                        None,
+                        None,
+                        settings.fabric_lakehouse,
+                        dev_mode=True,
+                    )
+
+                    # Extract a single function/tool call from the agent message
+                    func_call = sql_service.extract_function_call(agent_msg)
+                    # Only execute SQL functions when the planner selected the sql agent
+                    if func_call and agent_name and agent_name.startswith("sql_agent"):
+                        # Derive a simple query from the function call arguments
+                        # Support both new and legacy shapes
+                        name = None
+                        args_json = None
+                        if isinstance(func_call.get("function"), dict):
+                            name = func_call["function"].get("name")
+                            args_json = func_call["function"].get("arguments")
+                        else:
+                            name = func_call.get("name")
+                            args_json = func_call.get("arguments")
+
+                        md_lines.append(f"### Executing Agent Function: {name}\n")
+
+                        # Attempt to build a query from arguments (best-effort)
+                        try:
+                            import json as _json
+                            args_obj = _json.loads(args_json or "{}") if isinstance(args_json, str) else (args_json or {})
+                        except Exception:
+                            args_obj = {}
+
+                        # Simple mapping: if function name contains 'sql' or 'opportunity', craft example queries
+                        base_query = args_obj.get("query") or q
+                        print(f"Base query for SQL execution: {base_query}")
+
+                        # Execute
+                        sql_result = await sql_service.execute_query(base_query, rbac_ctx)
+
+                        md_lines.append("### SQL Tool Execution Result\n")
+                        md_lines.append("```json\n" + _pretty(sql_result.__dict__) + "\n```\n")
+                except Exception as e:
+                    md_lines.append(f"**SQL service execution error:** {e}\n\n")
 
             md_lines.append("---\n")
 
