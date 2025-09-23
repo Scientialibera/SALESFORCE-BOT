@@ -111,7 +111,7 @@ $aoaiCreated = $false
 if (-not (Exists @("cognitiveservices","account","show","-g",$Rg,"-n",$AoaiName))) {
   try {
     Write-Host "Creating Azure OpenAI account: $AoaiName in $aoaiLoc..." -ForegroundColor Yellow
-    Write-Host "Attempting to set custom subdomain to: $AoaiSubdomain" -ForegroundColor Yellow
+    Write-Host "Attempting to set custom subdomain to: $AoaiName" -ForegroundColor Yellow
     
     az cognitiveservices account create `
       --name $AoaiName `
@@ -119,7 +119,7 @@ if (-not (Exists @("cognitiveservices","account","show","-g",$Rg,"-n",$AoaiName)
       --location $aoaiLoc `
       --kind OpenAI `
       --sku S0 `
-      --custom-subdomain $AoaiName
+      --custom-subdomain $AoaiName `
       --yes -o none
     
     # Verify creation was successful
