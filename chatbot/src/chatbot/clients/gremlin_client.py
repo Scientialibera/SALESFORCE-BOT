@@ -96,17 +96,9 @@ class GremlinClient:
             # Execute query synchronously in thread pool to avoid event loop conflicts
             def execute_sync():
                 try:
-                    callback = gremlin_client.submitAsync(query, bindings or {})
-                    results = []
-                    
-                    # Process results
-                    for result in callback.result():
-                        if hasattr(result, 'data'):
-                            results.extend(result.data)
-                        else:
-                            results.append(result)
-                    
-                    return results
+                    # Cosmos pattern: submit(...).all().result()
+                    rs = gremlin_client.submit(message=query, bindings=(bindings or {}))
+                    return rs.all().result()
                 finally:
                     # Always close the client
                     try:

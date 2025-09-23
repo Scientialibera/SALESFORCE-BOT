@@ -1,10 +1,12 @@
 """
-Concise GraphService
+Minimal GraphService for agentic tests.
 
-Minimal implementation that focuses on executing Gremlin queries through the
-provided `GremlinClient` and returning small, predictable `QueryResult`
-objects. It intentionally removes document enrichment and complex formatters
-while preserving the public API used elsewhere.
+Provides a focused API:
+ - `execute_query(query, rbac_context)` -> QueryResult (uses GremlinClient)
+ - `extract_function_call(agent_message)` -> normalized function/tool call
+ - `apply_rbac_where(query, rbac_context)` -> Gremlin filter string (or query unchanged)
+
+This service intentionally avoids caching, enrichment, and dummy data.
 """
 from typing import Any, Dict, List, Optional
 from datetime import datetime
@@ -12,183 +14,120 @@ import structlog
 
 from chatbot.clients.gremlin_client import GremlinClient
 from chatbot.models.rbac import RBACContext
-from chatbot.models.result import QueryResult
-from chatbot.services.unified_service import UnifiedDataService
+from chatbot.models.result import QueryResult, DataTable, DataColumn
 
 logger = structlog.get_logger(__name__)
 
 
 class GraphService:
-    """Minimal graph service: run Gremlin queries and return formatted results."""
+    """Minimal graph service using GremlinClient for real queries."""
 
-    def __init__(
-        self,
-        gremlin_client: GremlinClient,
-        cache_service: UnifiedDataService,
-        max_results: int = 100,
-        max_traversal_depth: int = 5,
-    ):
+    def __init__(self, gremlin_client: GremlinClient, dev_mode: bool = False):
         self.gremlin_client = gremlin_client
-        self.unified_data_service = cache_service
-        self.max_results = max_results
-        self.max_traversal_depth = max_traversal_depth
+        self.dev_mode = dev_mode
 
-    async def _cache_get(self, key: str, rbac_context: RBACContext) -> Optional[Dict[str, Any]]:
-        try:
-            return await self.unified_data_service.get_query_result(key, rbac_context, "graph")
-        except Exception:
+    def extract_function_call(self, agent_message: dict) -> Optional[Dict[str, Any]]:
+        """
+        Extract a function/tool call from agent message (new and legacy shapes).
+        """
+        if not isinstance(agent_message, dict):
             return None
-
-    async def _cache_set(self, key: str, value: Dict[str, Any], rbac_context: RBACContext) -> None:
-        try:
-            await self.unified_data_service.set_query_result(key, value, rbac_context, "graph")
-        except Exception:
-            logger.debug("Failed to set graph cache", key=key)
-
-    def _format_results(self, raw: Any) -> List[Dict[str, Any]]:
-        """
-        Turn raw Gremlin rows into plain dicts.
-
-        Handles:
-        - already-dict rows
-        - path-like rows exposing `.objects`
-        - vertex/edge-like objects with `id`, `label`, `properties`
-        - falls back to stringifying unknown objects
-        """
-        out: List[Dict[str, Any]] = []
-        if not raw:
-            return out
-
-        for row in raw:
+        if agent_message.get("tool_calls"):
+            calls = agent_message.get("tool_calls") or []
+            return calls[0] if calls else None
+        if agent_message.get("function_call"):
+            return agent_message.get("function_call")
+        if agent_message.get("choices"):
             try:
-                if isinstance(row, dict):
-                    out.append(row)
-                    continue
-
-                objs = getattr(row, "objects", None)
-                if objs:
-                    path = []
-                    for o in objs:
-                        if isinstance(o, dict):
-                            path.append(o)
-                        else:
-                            path.append(
-                                {
-                                    "id": getattr(o, "id", str(o)),
-                                    "label": getattr(o, "label", None),
-                                    "properties": getattr(o, "properties", {}),
-                                }
-                            )
-                    out.append({"path": path})
-                    continue
-
-                if hasattr(row, "id"):
-                    out.append(
-                        {
-                            "id": getattr(row, "id", str(row)),
-                            "label": getattr(row, "label", None),
-                            "properties": getattr(row, "properties", {}),
-                        }
-                    )
-                    continue
-
-                out.append({"value": str(row)})
+                msg = (agent_message.get("choices") or [{}])[0].get("message")
+                if isinstance(msg, dict):
+                    return self.extract_function_call(msg)
             except Exception:
-                out.append({"value": str(row)})
-        return out
+                pass
+        return None
 
-    async def find_account_relationships(
-        self,
-        account_id: str,
-        rbac_context: RBACContext,
-        relationship_types: Optional[List[str]] = None,
-        max_depth: Optional[int] = None,
-    ) -> QueryResult:
-        """Return related vertices/paths for a single account."""
-        start = datetime.utcnow()
+    def apply_rbac_where(self, query: str, rbac_context: RBACContext) -> str:
+        """
+        For graph queries we translate RBAC to a vertex filter fragment.
+        This is intentionally small: if permissions or roles exist we add a
+        `.has('role', within([...]))` fragment to be inserted after a starting `g.V()`.
+        If dev_mode is True we return the query unchanged.
+        """
+        if self.dev_mode or not rbac_context:
+            return query
+
+        perms = getattr(rbac_context, "permissions", None) or getattr(rbac_context, "roles", None) or []
+        if isinstance(perms, (set, list, tuple)):
+            perms_list = list(perms)
+        else:
+            perms_list = [str(perms)]
+
+        if not perms_list:
+            return query
+
+        quoted = ", ".join(("'" + str(p).replace("'", "''") + "'") for p in perms_list)
+        fragment = f".has('role', within({quoted}))"
+
+        # Insert fragment after a leading g.V() if present
+        if query.strip().startswith("g.V()"):
+            return query.replace("g.V()", f"g.V(){fragment}", 1)
+        # Otherwise, append fragment at the end (best-effort)
+        return query + fragment
+
+    async def execute_query(self, query: str, rbac_context: RBACContext, bindings: Optional[Dict[str, Any]] = None) -> QueryResult:
+        """Execute a Gremlin query and return a QueryResult with a DataTable."""
         try:
-            depth = min(max_depth or self.max_traversal_depth, self.max_traversal_depth)
-            # Basic traversal: start from account vertex and traverse both directions up to depth
-            gremlin = f"g.V().has('account','id','{account_id}').repeat(both()).times({depth}).limit({self.max_results})"
+            # Apply RBAC unless dev_mode
+            gremlin = query
+            if not self.dev_mode and rbac_context:
+                try:
+                    gremlin = self.apply_rbac_where(query, rbac_context)
+                except Exception:
+                    gremlin = query
 
-            cache_key = f"graph:relationships:{account_id}:{depth}:{relationship_types}"
-            cached = await self._cache_get(cache_key, rbac_context)
-            if cached:
-                return QueryResult(**cached)
+            start = datetime.utcnow()
+            raw = await self.gremlin_client.execute_query(gremlin, bindings)
 
-            raw = await self.gremlin_client.execute_query(gremlin)
-            data = self._format_results(raw)
+            # Normalize raw results to rows (list[dict])
+            rows: List[Dict[str, Any]] = []
+            if raw:
+                for r in raw:
+                    if isinstance(r, dict):
+                        rows.append(r)
+                    else:
+                        # Try to extract common attributes
+                        row = {}
+                        if hasattr(r, "id"):
+                            row["id"] = getattr(r, "id")
+                        if hasattr(r, "label"):
+                            row["label"] = getattr(r, "label")
+                        props = getattr(r, "properties", None)
+                        if isinstance(props, dict):
+                            # flatten first-level properties
+                            for k, v in props.items():
+                                row[k] = v
+                        rows.append(row)
 
-            elapsed = (datetime.utcnow() - start).total_seconds() * 1000
-            result = QueryResult(
-                success=True,
-                data=data,
-                metadata={"account_id": account_id, "depth": depth},
-                rows_affected=len(data),
-                execution_time_ms=elapsed,
+            # Build DataTable
+            if rows:
+                columns = list(rows[0].keys())
+                table_columns = [DataColumn(name=c, data_type=("number" if isinstance(rows[0][c], (int, float)) else "string")) for c in columns]
+            else:
+                columns = []
+                table_columns = []
+
+            data_table = DataTable(
+                name="graph_result",
+                columns=table_columns,
+                rows=rows,
+                row_count=len(rows),
+                source="gremlin",
+                query=gremlin,
             )
 
-            await self._cache_set(cache_key, result.__dict__, rbac_context)
-            return result
+            elapsed = int((datetime.utcnow() - start).total_seconds() * 1000)
+            return QueryResult(success=True, data=data_table, error=None, query=gremlin, execution_time_ms=elapsed, row_count=len(rows))
 
         except Exception as e:
-            logger.error("Graph query failed", account_id=account_id, error=str(e))
-            return QueryResult(success=False, error_message=str(e), data=[], metadata={}, rows_affected=0, execution_time_ms=0)
-
-    async def find_relationships(
-        self,
-        account_ids: List[str],
-        rbac_context: RBACContext,
-        relationship_types: Optional[List[str]] = None,
-        max_depth: int = 2,
-    ) -> List[Dict[str, Any]]:
-        """Find relationships for multiple accounts by aggregating single-account calls."""
-        out: List[Dict[str, Any]] = []
-        for aid in account_ids:
-            res = await self.find_account_relationships(aid, rbac_context, relationship_types, max_depth)
-            if res and res.success and res.data:
-                out.extend(res.data)
-        return out
-
-    async def find_shortest_path(self, from_account: str, to_account: str, rbac_context: RBACContext, relationship_types: Optional[List[str]] = None) -> QueryResult:
-        """Simple shortest-path using repeated traversal (limited depth)."""
-        try:
-            gremlin = f"g.V().has('account','id','{from_account}').repeat(both()).until(has('account','id','{to_account}')).path().limit(1)"
-            raw = await self.gremlin_client.execute_query(gremlin)
-            data = self._format_results(raw)
-            return QueryResult(success=True, data=data, metadata={"from": from_account, "to": to_account}, rows_affected=len(data), execution_time_ms=0)
-        except Exception as e:
-            return QueryResult(success=False, error_message=str(e), data=[], metadata={}, rows_affected=0, execution_time_ms=0)
-
-    async def get_account_neighbors(self, account_id: str, rbac_context: RBACContext, neighbor_types: Optional[List[str]] = None) -> QueryResult:
-        """Return immediate neighbors of an account (one hop)."""
-        try:
-            gremlin = f"g.V().has('account','id','{account_id}').both().limit({self.max_results})"
-            raw = await self.gremlin_client.execute_query(gremlin)
-            data = self._format_results(raw)
-            return QueryResult(success=True, data=data, metadata={"account_id": account_id}, rows_affected=len(data), execution_time_ms=0)
-        except Exception as e:
-            return QueryResult(success=False, error_message=str(e), data=[], metadata={}, rows_affected=0, execution_time_ms=0)
-
-    async def find_neighbors(self, entity_id: str, rbac_context: RBACContext, relationship_types: Optional[List[str]] = None, limit: int = 50) -> List[Dict[str, Any]]:
-        res = await self.get_account_neighbors(entity_id, rbac_context, relationship_types)
-        return res.data if res and res.success else []
-
-    async def find_relationships_with_documents(
-        self,
-        account_ids: List[str],
-        rbac_context: RBACContext,
-        relationship_types: Optional[List[str]] = None,
-        max_depth: int = 2,
-        include_document_content: bool = True,
-    ) -> Dict[str, Any]:
-        """Compatibility wrapper: return relationships and an empty documents_content map (no enrichment)."""
-        relationships = await self.find_relationships(account_ids, rbac_context, relationship_types, max_depth)
-        return {
-            "success": True,
-            "account_ids": account_ids,
-            "relationships": relationships,
-            "documents_found": 0,
-            "documents_content": {},
-            "metadata": {"relationship_count": len(relationships), "execution_time_ms": 0, "includes_content": False},
-        }
+            logger.error("Graph execute failed", error=str(e), query=query)
+            return QueryResult(success=False, data=None, error=str(e), query=query, execution_time_ms=0, row_count=0)

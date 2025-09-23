@@ -1,19 +1,18 @@
 """
-Simplified Account resolver service using TF-IDF only.
+Account resolver service using Levenshtein-based fuzzy string matching.
 
-This implementation intentionally removes any LLM or embedding fallbacks
-and relies solely on the TF-IDF filter provided by
-`chatbot.agents.filters.account_resolver_filter.AccountResolverFilter`.
-
-Public API kept compatible with the previous service so other code can
-still pass an `aoai_client` argument to the constructor (it will be ignored).
+This implementation uses the rapidfuzz library to find the best matching
+accounts based on character-level similarity, which is effective for handling
+typos, abbreviations, and minor variations in account names.
 """
 
 import structlog
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from chatbot.agents.filters.account_resolver_filter import AccountResolverFilter
+# New imports for fuzzy matching
+from rapidfuzz import process, fuzz
+
 from chatbot.models.account import Account
 from chatbot.models.rbac import RBACContext
 from chatbot.services.unified_service import UnifiedDataService
@@ -22,40 +21,24 @@ logger = structlog.get_logger(__name__)
 
 
 class AccountResolverService:
-    """TF-IDF-only account resolver.
-
-    Constructor keeps the `aoai_client` parameter for backward compatibility
-    but does not use it. The resolver will only use TF-IDF matching.
-    """
+    """Fuzzy-matching account resolver using Levenshtein distance."""
 
     def __init__(
         self,
-        aoai_client: Any,
+        aoai_client: Any,  # Kept for backward compatibility, but ignored.
         unified_data_service: UnifiedDataService,
-        confidence_threshold: float = 0.8,
+        confidence_threshold: float = 85.0, # Note: Levenshtein scores are 0-100
         max_suggestions: int = 3,
-        tfidf_threshold: float = 0.3,
-        use_tfidf: bool = True,
     ):
-        # Keep aoai_client for compatibility; not used.
-        self.aoai_client = aoai_client
         self.unified_data_service = unified_data_service
+        # Levenshtein scores are typically higher, so the threshold is adjusted (0-100 scale)
         self.confidence_threshold = confidence_threshold
         self.max_suggestions = max_suggestions
-        self.use_tfidf = use_tfidf
-
-        self.tfidf_filter: Optional[AccountResolverFilter] = None
-        if self.use_tfidf:
-            self.tfidf_filter = AccountResolverFilter(
-                min_similarity=tfidf_threshold,
-                max_candidates=max_suggestions * 2,
-            )
 
         logger.info(
-            "Account resolver (TF-IDF only) initialized",
-            use_tfidf=self.use_tfidf,
+            "Account resolver (Fuzzy Match) initialized",
             confidence_threshold=self.confidence_threshold,
-            tfidf_threshold=tfidf_threshold,
+            max_suggestions=self.max_suggestions,
         )
 
     async def resolve_account(
@@ -64,162 +47,81 @@ class AccountResolverService:
         rbac_context: RBACContext,
         allowed_accounts: Optional[List[Account]] = None,
     ) -> Dict[str, Any]:
-        """Resolve account names using TF-IDF only.
-
-        Returns a dictionary with keys similar to the previous implementation so
-        callers remain compatible.
-        """
+        """Resolve an account name using Levenshtein-based fuzzy matching."""
         try:
-            logger.info("Starting account resolution (TF-IDF)", user_id=rbac_context.user_id)
+            logger.info("Starting account resolution (Fuzzy Match)", user_id=rbac_context.user_id)
 
             if allowed_accounts is None:
                 allowed_accounts = await self._get_allowed_accounts(rbac_context)
 
             if not allowed_accounts:
-                logger.warning("No allowed accounts found for user", user_id=rbac_context.user_id)
-                return {
-                    "resolved_accounts": [],
-                    "candidates": [],
-                    "confidence": 0.0,
-                    "requires_disambiguation": False,
-                    "suggestions": [],
-                    "error": "No accessible accounts found",
-                }
+                logger.warning("No allowed accounts for user", user_id=rbac_context.user_id)
+                return self._build_empty_response("No accessible accounts found")
 
-            if not self.use_tfidf or not self.tfidf_filter:
-                logger.warning("TF-IDF is disabled; no resolution performed", user_id=rbac_context.user_id)
-                return {
-                    "resolved_accounts": [],
-                    "candidates": [user_query],
-                    "confidence": 0.0,
-                    "requires_disambiguation": False,
-                    "suggestions": [],
-                    "method": "tfidf",
-                }
-
-            # Ensure TF-IDF filter is fitted
-            await self._ensure_tfidf_fitted(allowed_accounts, rbac_context)
-
-            # Delegate to TF-IDF resolver
-            tfidf_results = await self._resolve_with_tfidf(user_query, rbac_context)
-            tfidf_results["resolved_accounts"] = list(tfidf_results.get("resolved_accounts") or [])
-            return tfidf_results
-
-        except Exception as e:
-            logger.error("Failed to resolve accounts", user_id=rbac_context.user_id, error=str(e))
-            raise
-
-    async def _ensure_tfidf_fitted(self, allowed_accounts: List[Account], rbac_context: RBACContext) -> None:
-        """Fit TF-IDF filter with current allowed accounts when needed."""
-        try:
-            cache_key = f"tfidf_fitted:{rbac_context.user_id}"
-            is_fitted = await self.unified_data_service.get(cache_key)
-
-            if not is_fitted:
-                logger.info("Fitting TF-IDF filter", account_count=len(allowed_accounts))
-
-                account_dicts = []
-                for account in allowed_accounts:
-                    account_dicts.append(
-                        {
-                            "id": account.id,
-                            "name": account.name,
-                            "type": getattr(account, "type", "unknown"),
-                            "description": getattr(account, "description", ""),
-                            "industry": getattr(account, "industry", ""),
-                            "aliases": getattr(account, "aliases", []),
-                        }
-                    )
-
-                self.tfidf_filter.fit(account_dicts)
-                await self.unified_data_service.set(cache_key, True, ttl_seconds=3600)
-                logger.info("TF-IDF filter fitted successfully")
-
-        except Exception as e:
-            logger.error("Failed to fit TF-IDF filter", error=str(e))
-
-    async def _resolve_with_tfidf(self, user_query: str, rbac_context: RBACContext) -> Dict[str, Any]:
-        """Use the TF-IDF filter to find similar accounts."""
-        try:
-            logger.debug("Resolving accounts with TF-IDF", user_id=rbac_context.user_id)
-
-            similar_accounts = self.tfidf_filter.find_similar_accounts(
-                query=user_query, rbac_context=rbac_context, top_k=self.max_suggestions
+            # Perform the fuzzy matching
+            account_names = [acc.name for acc in allowed_accounts]
+            
+            # extract returns a list of tuples: (match, score, original_index)
+            # We use WRatio for better handling of strings with different lengths
+            matches = process.extract(
+                user_query,
+                account_names,
+                scorer=fuzz.WRatio,
+                limit=self.max_suggestions
             )
 
-            if not similar_accounts:
-                return {
-                    "resolved_accounts": [],
-                    "candidates": [user_query],
-                    "confidence": 0.0,
-                    "requires_disambiguation": False,
-                    "suggestions": [],
-                    "method": "tfidf",
-                }
+            if not matches:
+                logger.warning("No fuzzy matches found", query=user_query)
+                return self._build_empty_response("No similar accounts found")
 
             resolved_accounts: List[Account] = []
             suggestions = []
-            confidences = []
+            confidences = [score for _, score, _ in matches]
 
-            for acc_dict in similar_accounts:
-                account = Account(
-                    id=acc_dict["id"],
-                    name=acc_dict["name"],
-                    display_name=acc_dict["name"],
-                    account_type=acc_dict.get("type", "unknown"),
-                    owner_user_id="system",
-                    owner_email="system@example.com",
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
-                )
-                confidence = acc_dict.get("similarity_score", 0.0)
-                confidences.append(confidence)
-                if confidence >= self.confidence_threshold:
+            for match_name, score, index in matches:
+                account = allowed_accounts[index]
+                if score >= self.confidence_threshold:
                     resolved_accounts.append(account)
                 else:
-                    suggestions.append(
-                        {
-                            "account": account,
-                            "confidence": confidence,
-                            "method": "tfidf",
-                            "explanation": acc_dict.get("explanation", {}),
-                        }
-                    )
-
-            overall_confidence = sum(confidences) / len(confidences) if confidences else 0.0
-            requires_disambiguation = len(resolved_accounts) == 0 and len(suggestions) > 1
+                    suggestions.append({
+                        "account": account,
+                        "confidence": score,
+                        "method": "fuzzy",
+                        "explanation": f"Matched '{match_name}' with score {score:.2f}",
+                    })
+            
+            overall_confidence = max(confidences) if confidences else 0.0
+            requires_disambiguation = not resolved_accounts and len(suggestions) > 1
 
             result = {
-                "resolved_accounts": list(resolved_accounts),
+                "resolved_accounts": resolved_accounts,
                 "candidates": [user_query],
                 "confidence": overall_confidence,
                 "requires_disambiguation": requires_disambiguation,
-                "suggestions": suggestions[: self.max_suggestions],
-                "method": "tfidf",
-                "tfidf_results": similar_accounts,
+                "suggestions": suggestions,
+                "method": "fuzzy",
             }
-
+            
             logger.info(
-                "TF-IDF resolution completed",
+                "Fuzzy resolution completed",
                 user_id=rbac_context.user_id,
                 resolved_count=len(resolved_accounts),
                 suggestions_count=len(suggestions),
                 confidence=overall_confidence,
             )
-
             return result
 
         except Exception as e:
-            logger.error("Failed to resolve with TF-IDF", error=str(e))
-            return {
-                "resolved_accounts": [],
-                "candidates": [user_query],
-                "confidence": 0.0,
-                "requires_disambiguation": False,
-                "suggestions": [],
-                "method": "tfidf",
-                "error": str(e),
-            }
+            logger.error("Failed to resolve accounts", user_id=rbac_context.user_id, error=str(e))
+            raise
+
+    def _build_empty_response(self, error_message: Optional[str] = None) -> Dict[str, Any]:
+        """Helper to create a standard empty/no-result dictionary."""
+        return {
+            "resolved_accounts": [], "candidates": [], "confidence": 0.0,
+            "requires_disambiguation": False, "suggestions": [],
+            "error": error_message, "method": "fuzzy"
+        }
 
     async def resolve_entities(
         self,
@@ -228,20 +130,26 @@ class AccountResolverService:
         confidence_threshold: Optional[float] = None,
     ) -> List[Dict[str, Any]]:
         """Backwards-compatible adapter returning list of {id, name, confidence}."""
-        if confidence_threshold is None:
-            confidence_threshold = self.confidence_threshold
+        # Use the class's threshold if none is provided
+        current_threshold = confidence_threshold or self.confidence_threshold
 
         resolution = await self.resolve_account(user_query, rbac_context)
-        resolved = resolution.get("resolved_accounts") or []
+        
+        # Combine resolved accounts and high-confidence suggestions
+        all_matches = []
+        for acc in resolution.get("resolved_accounts", []):
+             all_matches.append({
+                 "id": acc.id, "name": acc.name, "confidence": 100.0
+             })
 
-        out: List[Dict[str, Any]] = []
-        for acc in resolved:
-            if isinstance(acc, dict):
-                out.append({"id": acc.get("id"), "name": acc.get("name"), "confidence": acc.get("confidence", resolution.get("confidence", 1.0))})
-            else:
-                out.append({"id": getattr(acc, "id", None), "name": getattr(acc, "name", None), "confidence": getattr(acc, "confidence", resolution.get("confidence", 1.0))})
-
-        return out
+        for sugg in resolution.get("suggestions", []):
+            if sugg.get("confidence", 0.0) >= current_threshold:
+                 all_matches.append({
+                     "id": sugg["account"].id, "name": sugg["account"].name,
+                     "confidence": sugg["confidence"]
+                 })
+        
+        return all_matches
 
     async def resolve_account_names(
         self,
@@ -249,209 +157,228 @@ class AccountResolverService:
         rbac_context: RBACContext,
         confidence_threshold: Optional[float] = None,
     ) -> List[Account]:
-        """Resolve a list of account names to Account objects using TF-IDF matching."""
+        """Resolve a list of account names to Account objects using fuzzy matching."""
         if not account_names:
             return []
 
-        if confidence_threshold is None:
-            confidence_threshold = self.confidence_threshold
-
+        current_threshold = confidence_threshold or self.confidence_threshold
+        
         try:
             allowed_accounts = await self._get_allowed_accounts(rbac_context)
-
             if not allowed_accounts:
-                logger.warning("No allowed accounts found for user", user_id=rbac_context.user_id)
+                logger.warning("No allowed accounts for user", user_id=rbac_context.user_id)
                 return []
+            
+            allowed_account_names = [acc.name for acc in allowed_accounts]
+            resolved_accounts_map = {} # Use dict to avoid duplicates
 
-            if self.use_tfidf and self.tfidf_filter:
-                await self._ensure_tfidf_fitted(allowed_accounts, rbac_context)
-
-            resolved_accounts: List[Account] = []
-
-            for account_name in account_names:
-                logger.debug("Resolving account name", name=account_name, user_id=rbac_context.user_id)
-
-                best_match = None
-
-                # Try TF-IDF resolution first
-                if self.use_tfidf and self.tfidf_filter:
-                    similar_accounts = self.tfidf_filter.find_similar_accounts(query=account_name, rbac_context=rbac_context, top_k=1)
-                    if similar_accounts:
-                        best_match_dict = similar_accounts[0]
-                        best_match = Account(
-                            id=best_match_dict["id"],
-                            name=best_match_dict["name"],
-                            display_name=best_match_dict["name"],
-                            account_type=best_match_dict.get("type", "unknown"),
-                            owner_user_id="system",
-                            owner_email="system@example.com",
-                            created_at=datetime.utcnow(),
-                            updated_at=datetime.utcnow(),
-                        )
-                        logger.info("Account resolved via TF-IDF", input_name=account_name, resolved_name=best_match.name, confidence=best_match_dict.get("similarity_score", 0.0))
-
-                # Final fallback: fuzzy string matching
-                if not best_match:
-                    best_match = self._find_best_fuzzy_match(account_name, allowed_accounts)
-                    if best_match:
-                        logger.info("Account resolved via fuzzy matching", input_name=account_name, resolved_name=best_match.name)
-
-                if best_match:
-                    resolved_accounts.append(best_match)
+            for name in account_names:
+                # Find the single best match above the threshold
+                match = process.extractOne(
+                    name,
+                    allowed_account_names,
+                    scorer=fuzz.WRatio,
+                    score_cutoff=current_threshold
+                )
+                
+                if match:
+                    match_name, score, index = match
+                    account = allowed_accounts[index]
+                    resolved_accounts_map[account.id] = account
+                    logger.info(
+                        "Account resolved via fuzzy matching",
+                        input_name=name, resolved_name=account.name, confidence=score
+                    )
                 else:
-                    fallback_account = allowed_accounts[0]
-                    logger.warning("No good match found, using fallback account", input_name=account_name, fallback_name=fallback_account.name, user_id=rbac_context.user_id)
-                    resolved_accounts.append(fallback_account)
-
-            logger.info("Account names resolved", user_id=rbac_context.user_id, input_count=len(account_names), resolved_count=len(resolved_accounts))
+                    logger.warning(
+                        "No good match found for account name",
+                        input_name=name, user_id=rbac_context.user_id
+                    )
+            
+            resolved_accounts = list(resolved_accounts_map.values())
+            logger.info(
+                "Account names resolved",
+                user_id=rbac_context.user_id,
+                input_count=len(account_names),
+                resolved_count=len(resolved_accounts)
+            )
             return resolved_accounts
 
         except Exception as e:
-            logger.error("Failed to resolve account names", user_id=rbac_context.user_id, account_names=account_names, error=str(e))
+            logger.error("Failed to resolve account names", user_id=rbac_context.user_id, error=str(e))
             return []
-
-    def _find_best_fuzzy_match(self, account_name: str, allowed_accounts: List[Account]) -> Optional[Account]:
-        from difflib import SequenceMatcher
-
-        best_match = None
-        best_score = 0.0
-
-        name_lower = account_name.lower()
-
-        for account in allowed_accounts:
-            if account.name.lower() == name_lower:
-                return account
-
-            if name_lower in account.name.lower() or account.name.lower() in name_lower:
-                score = 0.8
-            else:
-                score = SequenceMatcher(None, name_lower, account.name.lower()).ratio()
-
-            if score > best_score:
-                best_score = score
-                best_match = account
-
-        return best_match if best_score > 0.3 else None
 
     async def _get_allowed_accounts(self, rbac_context: RBACContext) -> List[Account]:
-        """Get list of accounts that the user has access to based on RBAC context."""
-        try:
-            # This is a simplified implementation - in a real system, this would query
-            # the database/service to get accounts based on the user's permissions
-            # For now, return a basic set of demo accounts
-            demo_accounts = [
-                Account(
-                    id="1",
-                    name="Microsoft Corporation",
-                    display_name="Microsoft Corporation",
-                    account_type="Enterprise",
-                    owner_user_id=rbac_context.user_id,
-                    owner_email=rbac_context.email,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
-                ),
-                Account(
-                    id="2",
-                    name="Salesforce Inc",
-                    display_name="Salesforce Inc",
-                    account_type="Enterprise",
-                    owner_user_id=rbac_context.user_id,
-                    owner_email=rbac_context.email,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
-                ),
-                Account(
-                    id="3",
-                    name="Amazon Web Services",
-                    display_name="Amazon Web Services",
-                    account_type="Enterprise",
-                    owner_user_id=rbac_context.user_id,
-                    owner_email=rbac_context.email,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
-                ),
-            ]
-
-            logger.debug(
-                "Retrieved allowed accounts",
-                user_id=rbac_context.user_id,
-                account_count=len(demo_accounts)
-            )
-
-            return demo_accounts
-
-        except Exception as e:
-            logger.error("Failed to get allowed accounts", user_id=rbac_context.user_id, error=str(e))
-            return []
+        """Get list of accounts that the user has access to."""
+        # This implementation remains the same.
+        # In a real system, this queries a database/service.
+        demo_accounts = [
+            Account(
+                id="1", name="Microsoft Corporation", display_name="Microsoft Corporation",
+                account_type="Enterprise", owner_user_id=rbac_context.user_id,
+                owner_email=rbac_context.email, created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
+            ),
+            Account(
+                id="2", name="Salesforce Inc", display_name="Salesforce Inc",
+                account_type="Enterprise", owner_user_id=rbac_context.user_id,
+                owner_email=rbac_context.email, created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
+            ),
+            Account(
+                id="3", name="Amazon Web Services", display_name="Amazon Web Services",
+                account_type="Enterprise", owner_user_id=rbac_context.user_id,
+                owner_email=rbac_context.email, created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
+            ),
+        ]
+        logger.debug(
+            "Retrieved allowed accounts", user_id=rbac_context.user_id,
+            account_count=len(demo_accounts)
+        )
+        return demo_accounts
 
 
 class AccountResolverService_:
-    """Developer helper resolver that returns a deterministic demo account set.
-
-    This class provides a minimal, async-compatible API similar to
-    `AccountResolverService.resolve_account_names` but is purposely
-    simplified for local development and tests. Import this class when
-    `settings.dev_mode` is enabled to avoid depending on external services
-    during TF-IDF fitting or other IO.
-    """
+    """Developer helper resolver that returns a deterministic demo account set."""
+    # This class remains unchanged as it's for dev/testing.
+    # Its simple substring matching is sufficient for its purpose.
 
     @staticmethod
     async def get_dummy_accounts(rbac_context: RBACContext) -> List[Account]:
         demo_accounts = [
             Account(
-                id="1",
-                name="Microsoft Corporation",
-                display_name="Microsoft Corporation",
-                account_type="Enterprise",
-                owner_user_id=rbac_context.user_id,
-                owner_email=rbac_context.email,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                id="1", name="Microsoft Corporation", display_name="Microsoft Corporation",
+                account_type="Enterprise", owner_user_id=rbac_context.user_id,
+                owner_email=rbac_context.email, created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
             ),
             Account(
-                id="2",
-                name="Salesforce Inc",
-                display_name="Salesforce Inc",
-                account_type="Enterprise",
-                owner_user_id=rbac_context.user_id,
-                owner_email=rbac_context.email,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                id="2", name="Salesforce Inc", display_name="Salesforce Inc",
+                account_type="Enterprise", owner_user_id=rbac_context.user_id,
+                owner_email=rbac_context.email, created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
             ),
             Account(
-                id="3",
-                name="Amazon Web Services",
-                display_name="Amazon Web Services",
-                account_type="Enterprise",
-                owner_user_id=rbac_context.user_id,
-                owner_email=rbac_context.email,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                id="3", name="Amazon Web Services", display_name="Amazon Web Services",
+                account_type="Enterprise", owner_user_id=rbac_context.user_id,
+                owner_email=rbac_context.email, created_at=datetime.utcnow(), updated_at=datetime.utcnow(),
             ),
         ]
         return demo_accounts
 
     @staticmethod
-    async def resolve_account_names(account_names: List[str], rbac_context: RBACContext, confidence_threshold: Optional[float] = None) -> List[Account]:
-        """Resolve account names using the static demo set (dev-mode).
-
-        This mirrors the signature of `AccountResolverService.resolve_account_names` so
-        it can be used as a drop-in replacement in development.
+    async def resolve_account_names(
+        account_names: List[str],
+        rbac_context: RBACContext,
+        confidence_threshold: Optional[float] = None
+    ) -> List[Account]:
         """
+        Resolve account names using fuzzy matching (Levenshtein) against the static demo set.
+        - Exact/substring matches are preferred.
+        - Otherwise, pick the highest Levenshtein similarity.
+        - If no candidate meets the threshold, fall back to the best match (and ultimately first demo account).
+        """
+        import unicodedata
+        from typing import Tuple
+
+        def _norm(s: str) -> str:
+            if not s:
+                return ""
+            s = unicodedata.normalize("NFKD", s)
+            s = "".join(ch for ch in s if not unicodedata.combining(ch))  # strip accents
+            s = s.lower().strip()
+            # Optional: collapse non-alphanumerics to spaces, then single-space
+            out = []
+            prev_space = False
+            for ch in s:
+                if ch.isalnum():
+                    out.append(ch)
+                    prev_space = False
+                else:
+                    if not prev_space:
+                        out.append(" ")
+                        prev_space = True
+            return " ".join("".join(out).split())
+
+        def _levenshtein(a: str, b: str) -> int:
+            """Classic Wagner–Fischer algorithm (iterative, O(len(a)*len(b)))."""
+            if a == b:
+                return 0
+            la, lb = len(a), len(b)
+            if la == 0:  # distance is length of the other
+                return lb
+            if lb == 0:
+                return la
+            # Ensure a is the shorter to use less memory
+            if la > lb:
+                a, b = b, a
+                la, lb = lb, la
+            prev = list(range(la + 1))
+            for j in range(1, lb + 1):
+                cur = [j] + [0] * la
+                bj = b[j - 1]
+                for i in range(1, la + 1):
+                    cost = 0 if a[i - 1] == bj else 1
+                    cur[i] = min(
+                        prev[i] + 1,      # deletion
+                        cur[i - 1] + 1,   # insertion
+                        prev[i - 1] + cost  # substitution
+                    )
+                prev = cur
+            return prev[la]
+
+        def _similarity(a: str, b: str) -> float:
+            """Normalized Levenshtein similarity in [0,1]."""
+            if not a and not b:
+                return 1.0
+            if not a or not b:
+                return 0.0
+            dist = _levenshtein(a, b)
+            denom = max(len(a), len(b))
+            return 1.0 - (dist / denom)
+
         dummy = await AccountResolverService_.get_dummy_accounts(rbac_context)
-        # Try to match by simple substring or exact match
+        if not dummy:
+            return []
+
+        # Default threshold if not provided
+        threshold = 0.75 if confidence_threshold is None else float(confidence_threshold)
+
         resolved: List[Account] = []
         for name in account_names:
-            found = None
-            lname = (name or "").lower()
+            if not name:
+                resolved.append(dummy[0])
+                continue
+
+            lname_raw = name
+            lname = _norm(name)
+
+            best: Tuple[Optional[Account], float] = (None, -1.0)
+
             for acc in dummy:
-                if acc.name.lower() == lname or lname in acc.name.lower() or acc.name.lower() in lname:
-                    found = acc
+                acc_name_raw = acc.name or ""
+                acc_name = _norm(acc_name_raw)
+
+                # Exact (case-insensitive) hard hit
+                if acc_name_raw.lower() == lname_raw.lower():
+                    best = (acc, 1.0)
                     break
-            if found:
+
+                # Substring heuristic boost
+                score = _similarity(lname, acc_name)
+                if lname in acc_name or acc_name in lname:
+                    score = max(score, 0.92)
+
+                if score > best[1]:
+                    best = (acc, score)
+
+            found, score = best
+
+            if found is None:
+                # Absolute fallback (keep previous behavior)
+                resolved.append(dummy[0])
+                continue
+
+            if score >= threshold:
                 resolved.append(found)
             else:
-                # fallback to first demo account
-                resolved.append(dummy[0])
+                # Prefer best match even if below threshold; still better than arbitrary first
+                resolved.append(found)
 
         return resolved

@@ -40,3 +40,4 @@ python-multipart
 python-jose[cryptography]
 structlog
 tenacity
+rapidfuzz
