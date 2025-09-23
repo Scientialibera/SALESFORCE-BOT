@@ -121,8 +121,14 @@ async def lifespan(app: FastAPI):
         app_state.cosmos_client = CosmosDBClient(settings.cosmos_db)
         logger.info("Cosmos DB client initialized successfully")
         
-        app_state.gremlin_client = GremlinClient(settings.gremlin)
-        logger.info("Gremlin client initialized successfully")
+        # Initialize Gremlin client only if an endpoint is configured. This
+        # allows local development and tests to run without a Gremlin server.
+        if getattr(settings.gremlin, "endpoint", None):
+            app_state.gremlin_client = GremlinClient(settings.gremlin)
+            logger.info("Gremlin client initialized successfully")
+        else:
+            app_state.gremlin_client = None
+            logger.info("Gremlin endpoint not configured; skipping Gremlin client initialization")
         
         app_state.fabric_client = FabricLakehouseClient(
             settings.fabric_lakehouse.sql_endpoint,
@@ -190,7 +196,6 @@ async def lifespan(app: FastAPI):
         # Initialize planner service
         from chatbot.services.planner_service import PlannerService
         app_state.planner_service = PlannerService(
-            kernel,
             app_state.agent_functions_repository,
             app_state.prompts_repository,
             app_state.rbac_service,
@@ -236,38 +241,25 @@ async def lifespan(app: FastAPI):
             embedding_utils
         )
         
-        # Initialize Semantic Kernel agents
-        logger.info("Initializing Semantic Kernel agents")
-        
-        # Create kernel
-        import semantic_kernel as sk
-        kernel = sk.Kernel()
-        
-        
+        # Initialize agents
+        logger.info("Initializing simplified agents")
+
         # Initialize SQL agent
         app_state.sql_agent = SQLAgent(
-            kernel,
             app_state.sql_service,
             app_state.account_resolver_service,
             app_state.telemetry_service,
         )
-        
-        # SQL and Graph agents will load their tools dynamically from the database
-        # through the AgentFunctionsRepository when they execute
-        logger.info("SQL agent enabled" if settings.agents.sql_agent_enabled else "SQL agent disabled")
-        logger.info("Graph agent enabled" if settings.agents.graph_agent_enabled else "Graph agent disabled")
-        
+
         # Initialize Graph agent
         app_state.graph_agent = GraphAgent(
+            app_state.graph_service,
             app_state.telemetry_service,
         )
-        
-        # Function definitions are loaded from Cosmos DB via AgentFunctionsRepository
-        # when agents execute, not registered statically at startup
-        logger.info("Agents will load functions dynamically from database")
-        
-        # Store the configured kernel in app state
-        app_state.kernel = kernel
+
+        logger.info("Agents initialized")
+        logger.info("SQL agent enabled" if settings.agents.sql_agent_enabled else "SQL agent disabled")
+        logger.info("Graph agent enabled" if settings.agents.graph_agent_enabled else "Graph agent disabled")
         
         logger.info("Application startup completed successfully")
         
@@ -314,7 +306,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version=settings.version,
-        description="Account Q&A Bot with Semantic Kernel and Azure services",
+        description="Account Q&A Bot with Azure services",
         docs_url="/docs" if settings.debug else None,
         redoc_url="/redoc" if settings.debug else None,
         openapi_url="/openapi.json" if settings.debug else None,

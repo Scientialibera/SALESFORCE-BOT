@@ -1,864 +1,198 @@
 """
-Planner service for semantic kernel orchestration and tool selection.
+Simplified planner service using only Azure OpenAI function calling.
 
-This service handles plan creation, execution, and tool invocation using
-Semantic Kernel's planner capabilities with RBAC filtering.
+This service handles plan creation and tool selection without Semantic Kernel.
 """
 
 from typing import Any, Dict, List, Optional
-from uuid import uuid4
 import json
 import structlog
-from datetime import datetime, timedelta
-
-from semantic_kernel import Kernel
-# from semantic_kernel.planners import SequentialPlanner, StepwisePlanner
-from semantic_kernel.core_plugins import ConversationSummaryPlugin, TimePlugin
-# from semantic_kernel.planning.sequential_planner.sequential_planner_config import SequentialPlannerConfig
-# from semantic_kernel.planning.stepwise_planner.stepwise_planner_config import StepwisePlannerConfig
 
 from chatbot.repositories.agent_functions_repository import AgentFunctionsRepository
 from chatbot.repositories.prompts_repository import PromptsRepository
 from chatbot.models.rbac import RBACContext
-from chatbot.models.plan import Plan, ExecutionStep, ExecutionResult, StepStatus, ToolDecision, PlanType
-from chatbot.services.rbac_service import RBACService
-from chatbot.config.settings import settings
 
 logger = structlog.get_logger(__name__)
 
 
 class PlannerService:
-    """Service for managing planning and execution.
+    """Simplified planner service using Azure OpenAI function calling only."""
 
-    This service now supports two planning modes:
-    - Function-calling based planning using Azure OpenAI client (recommended)
-    - Basic keyword-based fallback planner (legacy)
-    """
-    
     def __init__(
         self,
-        kernel: Kernel,
         agent_functions_repo: AgentFunctionsRepository,
         prompts_repo: PromptsRepository,
-        rbac_service: RBACService,
-        aoai_client=None,
+        rbac_service,
+        aoai_client,
     ):
         """
         Initialize the planner service.
-        
+
         Args:
-            kernel: Semantic Kernel instance
             agent_functions_repo: Repository for agent function definitions
             prompts_repo: Repository for system prompts
             rbac_service: RBAC service for permission filtering
+            aoai_client: Azure OpenAI client for function calling
         """
-        self.kernel = kernel
         self.agent_functions_repo = agent_functions_repo
         self.prompts_repo = prompts_repo
         self.rbac_service = rbac_service
-        # Optional Azure OpenAI client for function-calling based planning
         self.aoai_client = aoai_client
 
-        # Configure planners
-        self.sequential_planner = None
-        self.stepwise_planner = None
-        self._configure_planners()
-    
-    def _configure_planners(self):
-        """Configure the available planners."""
-        try:
-            # Try to detect whether the Semantic Kernel planners are available in
-            # the installed `semantic_kernel` package. Older/newer releases may
-            # expose planners under different packages or not include them at all.
-            try:
-                import semantic_kernel as sk
-                sk_version = getattr(sk, "__version__", "<unknown>")
-            except Exception:
-                sk_version = "<not-installed>"
-
-            # Attempt to import planner classes. If these imports succeed we
-            # expose them on the service so other code can opt-in to using
-            # the SK planners. We avoid instantiating planners here because
-            # different SK versions have differing constructor signatures.
-            try:
-                from semantic_kernel.planners import SequentialPlanner, StepwisePlanner  # type: ignore
-                self.sequential_planner = SequentialPlanner
-                self.stepwise_planner = StepwisePlanner
-                logger.info("Semantic Kernel planners detected and available", sk_version=sk_version)
-                return
-            except Exception:
-                # Planners not available in installed SK package
-                logger.info(
-                    "Planner configuration skipped - using basic kernel functionality",
-                    reason="planners-not-available",
-                    sk_version=sk_version,
-                    suggestion="Install a Semantic Kernel distribution that provides planners, e.g. 'pip install semantic-kernel[planners]' or upgrade/downgrade to a compatible version"
-                )
-                return
-
-        except Exception as e:
-            logger.error("Failed to configure planners", error=str(e))
-            # Do not raise here to allow app to continue with basic planner
-            return
-    
-    async def create_plan(
+    async def plan_with_auto_function_calling(
         self,
         user_request: str,
         rbac_context: RBACContext,
         conversation_context: Optional[List[Dict[str, Any]]] = None,
-        planner_type: str = "sequential"
-    ) -> Plan:
+    ) -> Dict[str, Any]:
         """
-        Create an execution plan for the user request.
-        
+        Plan using Auto Function Calling based on the simplified approach.
+
+        This method uses the simple loop logic where:
+        1. Call planner with agent functions to get tool selection
+        2. Return structured response for execution
+
         Args:
             user_request: User's natural language request
             rbac_context: User's RBAC context
             conversation_context: Optional conversation history
-            planner_type: Type of planner to use ("sequential" or "stepwise")
-            
+
         Returns:
-            Created execution plan
+            Dictionary with execution plan or direct assistant response
         """
         try:
-            # Get available functions based on RBAC
-            available_functions = await self._get_filtered_functions(rbac_context)
+            # Get available agents (functions whose name ends with '_agent')
+            all_defs = await self.agent_functions_repo.list_all_functions()
+            agents = [a for a in all_defs if getattr(a, "name", "").endswith("_agent")]
 
-            # Get system prompt for planning
-            planning_prompt = await self.prompts_repo.get_system_prompt(
-                "planner_system",
-                tenant_id=rbac_context.tenant_id,
-                scenario="general"
-            )
-
-            # Prepare context for planner
-            context_text = self._prepare_context(
-                user_request, conversation_context, available_functions
-            )
-
-            # If an Azure OpenAI client is configured, attempt a function-calling planning
-            if self.aoai_client:
-                try:
-                    plan = await self._create_function_call_plan(
-                        user_request, rbac_context, available_functions, planning_prompt
-                    )
-                    logger.info("Plan created via function-calling", plan_id=plan.id, user_id=rbac_context.user_id)
-                    return plan
-                except Exception as e:
-                    logger.warning(
-                        "Function-calling planning failed, falling back to basic planner",
-                        error=str(e)
-                    )
-
-            # Create plan using basic logic (fallback)
-            plan = await self._create_basic_plan(
-                user_request, rbac_context, conversation_context, available_functions
-            )
-            
-            logger.info(
-                "Plan created successfully",
-                plan_id=plan.id,
-                user_id=rbac_context.user_id,
-                steps_count=len(plan.steps),
-                planner_type=planner_type
-            )
-            
-            return plan
-            
-        except Exception as e:
-            logger.error(
-                "Failed to create plan",
-                user_id=rbac_context.user_id,
-                planner_type=planner_type,
-                error=str(e)
-            )
-            raise
-    
-    async def execute_plan(
-        self,
-        plan: Plan,
-        rbac_context: RBACContext,
-        execution_context: Optional[Dict[str, Any]] = None
-    ) -> ExecutionResult:
-        """
-        Execute a plan step by step.
-        
-        Args:
-            plan: Plan to execute
-            rbac_context: User's RBAC context
-            execution_context: Optional execution context
-            
-        Returns:
-            Execution result
-        """
-        try:
-            execution_result = ExecutionResult(
-                plan_id=plan.id,
-                execution_id=str(uuid4()),
-                started_at=datetime.utcnow(),
-                status="running",
-                step_results=[],
-                final_output="",
-                execution_metadata=execution_context or {}
-            )
-            
-            logger.info(
-                "Starting plan execution",
-                plan_id=plan.id,
-                execution_id=execution_result.execution_id,
-                user_id=rbac_context.user_id
-            )
-            
-            # Execute each step
-            for step in plan.steps:
-                step_result = await self._execute_step(step, rbac_context, execution_context)
-                execution_result.step_results.append(step_result)
-                
-                # Check if step failed and should stop execution
-                if step_result["status"] == "failed":
-                    execution_result.status = "failed"
-                    execution_result.error_message = step_result.get("error_message", "Step execution failed")
-                    break
-            
-            # Finalize execution result
-            if execution_result.status != "failed":
-                execution_result.status = "completed"
-                execution_result.final_output = self._compile_final_output(execution_result.step_results)
-            
-            execution_result.completed_at = datetime.utcnow()
-            execution_result.duration_seconds = (
-                execution_result.completed_at - execution_result.started_at
-            ).total_seconds()
-            
-            logger.info(
-                "Plan execution completed",
-                plan_id=plan.id,
-                execution_id=execution_result.execution_id,
-                status=execution_result.status,
-                duration_seconds=execution_result.duration_seconds
-            )
-            
-            return execution_result
-            
-        except Exception as e:
-            logger.error(
-                "Plan execution failed",
-                plan_id=plan.id,
-                user_id=rbac_context.user_id,
-                error=str(e)
-            )
-            
-            # Return failed execution result
-            return ExecutionResult(
-                plan_id=plan.id,
-                execution_id=str(uuid4()),
-                started_at=datetime.utcnow(),
-                completed_at=datetime.utcnow(),
-                status="failed",
-                error_message=str(e),
-                step_results=[],
-                final_output="",
-                execution_metadata=execution_context or {}
-            )
-    
-    async def _get_filtered_functions(self, rbac_context: RBACContext) -> List[Dict[str, Any]]:
-        """
-        Get functions available to the user based on RBAC.
-        
-        Args:
-            rbac_context: User's RBAC context
-            
-        Returns:
-            List of available function definitions
-        """
-        try:
-            # Get all function definitions
-            all_functions = await self.agent_functions_repo.get_all_functions()
-            
-            # Filter based on RBAC permissions
-            available_functions = []
-            for function in all_functions:
-                # Check if user has permission for this function
-                if await self.rbac_service.check_function_permission(
-                    rbac_context, function["name"]
-                ):
-                    available_functions.append(function)
-            
-            logger.debug(
-                "Functions filtered by RBAC",
-                user_id=rbac_context.user_id,
-                total_functions=len(all_functions),
-                available_functions=len(available_functions)
-            )
-            
-            return available_functions
-            
-        except Exception as e:
-            logger.error(
-                "Failed to get filtered functions",
-                user_id=rbac_context.user_id,
-                error=str(e)
-            )
-            return []
-    
-    def _prepare_context(
-        self,
-        user_request: str,
-        conversation_context: Optional[List[Dict[str, Any]]],
-        available_functions: List[Dict[str, Any]]
-    ) -> str:
-        """
-        Prepare context for the planner.
-        
-        Args:
-            user_request: User's request
-            conversation_context: Previous conversation
-            available_functions: Available functions
-            
-        Returns:
-            Formatted context string
-        """
-        context_parts = [
-            f"User Request: {user_request}",
-            "",
-            "Available Functions:"
-        ]
-        
-        # Add function descriptions
-        for func in available_functions:
-            context_parts.append(f"- {func['name']}: {func.get('description', '')}")
-        
-        # Add conversation context if available
-        if conversation_context:
-            context_parts.extend([
-                "",
-                "Previous Conversation:",
-            ])
-            for turn in conversation_context[-3:]:  # Last 3 turns
-                if isinstance(turn, dict):
-                    context_parts.append(f"User: {turn.get('user_message', '')}")
-                    context_parts.append(f"Assistant: {turn.get('assistant_message', '')}")
-        
-        return "\n".join(context_parts)
-
-    async def _create_function_call_plan(
-        self,
-        user_request: str,
-        rbac_context: RBACContext,
-        available_functions: List[Dict[str, Any]],
-        planning_prompt: Optional[str] = None,
-    ) -> Plan:
-        """
-        Use Azure OpenAI function-calling to determine which agent/function to run.
-
-        This method constructs a single function schema describing available
-        agent entrypoints (e.g., `sql_agent`, `graph_agent`, `direct_response`) and
-        calls the AOAI client with the user's query. The model's function choice
-        is converted into a Plan.
-        """
-        if not self.aoai_client:
-            raise RuntimeError("AOAI client not configured")
-
-        # Build function schema for the model. Keep it small and focused.
-        functions = []
-        for func in available_functions:
-            # Each function is represented with a minimal JSON schema for parameters
-            functions.append({
-                "name": func["name"],
-                "description": func.get("description", ""),
-                "parameters": {
-                    "type": "object",
-                    "properties": {"query": {"type": "string"}},
-                    "required": ["query"]
-                }
-            })
-
-        # Add higher level agent choices if not present
-        agent_choices = [f["name"] for f in available_functions]
-        # Ensure fallback agents exist
-        for fallback in ("direct_response", "sql_agent", "graph_agent"):
-            if fallback not in agent_choices:
-                functions.append({
-                    "name": fallback,
-                    "description": "Fallback agent",
+            # Build planner function definitions - each agent is a function
+            planner_function_defs = []
+            for agent in agents:
+                planner_function_defs.append({
+                    "name": agent.name,
+                    "description": getattr(agent, "description", "") or f"Agent {agent.name}",
                     "parameters": {
                         "type": "object",
-                        "properties": {"query": {"type": "string"}},
-                        "required": ["query"]
-                    }
+                        "properties": {
+                            "query": {"type": "string"},
+                            "accounts_mentioned": {
+                                "type": ["array", "null"],
+                                "items": {"type": "string"}
+                            }
+                        },
+                        "required": ["query", "accounts_mentioned"],
+                    },
                 })
 
-        # Create the chat messages payload
-        messages = [
-            {"role": "system", "content": planning_prompt or "You are an orchestrator that chooses which agent to call."},
-            {"role": "user", "content": user_request},
-        ]
+            # Convert to tools format for Azure OpenAI
+            planner_tools = [{"type": "function", "function": fd} for fd in planner_function_defs]
 
-        # Call AOAI client with function definitions. Use function calling to get chosen function.
-        try:
-            response = await self.aoai_client.create_chat_completion(
-                messages=messages,
-                functions=functions,
-                function_call="auto",
-                temperature=0.0,
-                max_tokens=256,
+            # Get planner system prompt
+            try:
+                planner_system = await self.prompts_repo.get_system_prompt("planner_system")
+            except Exception as e:
+                logger.error("Failed to get planner system prompt", error=str(e))
+                planner_system = "You are a planner service for a Salesforce Q&A chatbot. Choose the appropriate agent to handle the user request."
+
+            # Prepare messages
+            planner_messages = [
+                {"role": "system", "content": planner_system},
+                {"role": "user", "content": user_request},
+            ]
+
+            # Add conversation context if provided
+            if conversation_context:
+                for turn in conversation_context[-3:]:  # Last 3 turns
+                    if isinstance(turn, dict):
+                        user_msg = turn.get("user_message", "")
+                        assistant_msg = turn.get("assistant_message", "")
+                        if user_msg:
+                            planner_messages.insert(-1, {"role": "user", "content": user_msg})
+                        if assistant_msg:
+                            planner_messages.insert(-1, {"role": "assistant", "content": assistant_msg})
+
+            # Call Azure OpenAI with function calling
+            planner_resp = await self.aoai_client.create_chat_completion(
+                messages=planner_messages,
+                tools=planner_tools if planner_tools else None,
+                tool_choice="auto",
             )
 
-            # The AOAI client returns a dict with choices similar to OpenAI
-            choices = response.get("choices", [])
-            if not choices:
-                raise RuntimeError("No choices returned from AOAI function-calling")
+            # Extract planner response
+            planner_message = (planner_resp.get("choices") or [{}])[0].get("message", {})
 
-            choice = choices[0]
-            # Check for a function_call field
-            func_call = choice.get("message", {}).get("function_call") if isinstance(choice.get("message"), dict) else None
-            if not func_call:
-                # No function chosen - fallback
-                raise RuntimeError("Model did not select a function via function-calling")
-
-            func_name = func_call.get("name")
-            # Build a simple plan that executes the chosen agent/function
-            if func_name == "direct_response":
-                plan_type = PlanType.NO_TOOL
-                agent_type = "direct_response"
-            elif func_name == "sql_agent":
-                plan_type = PlanType.SQL_ONLY
-                agent_type = "sql_agent"
-            elif func_name == "graph_agent":
-                plan_type = PlanType.GRAPH_ONLY
-                agent_type = "graph_agent"
-            else:
-                # Treat unknown function names as direct agent invocations
-                plan_type = PlanType.HYBRID
-                agent_type = func_name
-
-            plan = Plan(
-                id=str(uuid4()),
-                plan_type=plan_type,
-                query=user_request,
-                user_id=rbac_context.user_id,
-                reasoning=f"Function-calling selected: {func_name}",
-                confidence=1.0,
-                steps=[],
-                status="created",
-            )
-
-            tool_decision = ToolDecision(
-                tool_name=agent_type,
-                confidence=0.9,
-                reasoning=f"Selected by function-calling: {func_name}",
-                parameters={"query": user_request, "user_id": rbac_context.user_id},
-            )
-
-            step = ExecutionStep(
-                step_id=str(uuid4()),
-                step_type="agent_execution",
-                description=f"Execute {agent_type} for: {user_request}",
-                tool_decision=tool_decision,
-                depends_on=[],
-                status=StepStatus.PENDING.value,
-            )
-
-            plan.add_step(step)
-
-            return plan
-
-        except Exception as e:
-            logger.error("Function-calling plan creation failed", error=str(e))
-            raise
-    
-    def _convert_sk_plan_to_plan(self, sk_plan, rbac_context: RBACContext) -> Plan:
-        """
-        Convert Semantic Kernel plan to our plan model.
-        
-        Args:
-            sk_plan: Semantic Kernel plan
-            rbac_context: User's RBAC context
-            
-        Returns:
-            Converted plan
-        """
-        plan_steps = []
-        
-        # Extract steps from SK plan
-        for i, step in enumerate(sk_plan._steps):
-            plan_step = ExecutionStep(
-                step_id=str(uuid4()),
-                step_type="tool",
-                description=step.description or f"Execute {step.name}",
-                tool_decision=ToolDecision(
-                    tool_name=step.plugin_name + "." + step.name if step.plugin_name else step.name,
-                    confidence=1.0,
-                    reasoning="Generated from semantic kernel plan",
-                    parameters=dict(step.parameters) if step.parameters else {}
-                ),
-                depends_on=[],
-                can_run_parallel=False,
-                status=StepStatus.PENDING.value
-            )
-            plan_steps.append(plan_step)
-        
-        return Plan(
-            plan_id=str(uuid4()),
-            user_id=rbac_context.user_id,
-            original_request=sk_plan.description or "User request",
-            steps=plan_steps,
-            created_at=datetime.utcnow(),
-            status="created",
-            metadata={
-                "planner_type": "semantic_kernel",
-                "sk_plan_description": sk_plan.description
-            }
-        )
-    
-    async def _execute_step(
-        self,
-        step: ExecutionStep,
-        rbac_context: RBACContext,
-        execution_context: Optional[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """
-        Execute a single plan step.
-        
-        Args:
-            step: Step to execute
-            rbac_context: User's RBAC context
-            execution_context: Execution context
-            
-        Returns:
-            Step execution result
-        """
-        try:
-            logger.info(
-                "Executing plan step",
-                step_id=step.step_id,
-                tool_name=step.tool_decision.tool_name if step.tool_decision else "unknown",
-                user_id=rbac_context.user_id
-            )
-            
-            step.status = StepStatus.RUNNING.value
-            
-            if not step.tool_decision:
-                raise ValueError("No tool decision found for step")
-            
-            # Handle direct response for no-tool scenarios
-            if step.tool_decision.tool_name == "direct_response":
-                query = step.tool_decision.parameters.get("query", "")
-                response = await self._generate_direct_response(query, rbac_context)
-                
-                step.status = StepStatus.COMPLETED.value
-                step.result = {"output": response, "success": True}
-                
-                step_result = {
-                    "step_id": step.step_id,
-                    "status": "completed",
-                    "output": response,
-                    "execution_time": 0
+            # Check if planner returned direct content (no function calls)
+            if planner_message.get("content") and not planner_message.get("tool_calls"):
+                return {
+                    "has_function_calls": False,
+                    "assistant_message": planner_message["content"],
+                    "raw_response": planner_message.get("content"),
+                    "execution_plan": []
                 }
-                
-                logger.info(
-                    "Direct response step executed successfully",
-                    step_id=step.step_id
-                )
-                
-                return step_result
-            
-            # Get function from kernel for other tool types
-            plugin_name, function_name = self._parse_function_name(step.tool_decision.tool_name)
-            
-            if plugin_name:
-                kernel_function = self.kernel.plugins[plugin_name][function_name]
-            else:
-                # Look for function in all plugins
-                kernel_function = None
-                for plugin in self.kernel.plugins.values():
-                    if function_name in plugin:
-                        kernel_function = plugin[function_name]
-                        break
-            
-            if not kernel_function:
-                # Debug: Log available plugins and functions
-                logger.error(
-                    "Function not found - debugging available functions",
-                    requested_function=step.tool_decision.tool_name,
-                    available_plugins=list(self.kernel.plugins.keys()),
-                    available_functions=[
-                        f"{plugin_name}.{func_name}" 
-                        for plugin_name, plugin in self.kernel.plugins.items()
-                        for func_name in plugin.functions.keys()
-                    ] if hasattr(self.kernel, 'plugins') else []
-                )
-                raise ValueError(f"Function not found: {step.tool_decision.tool_name}")
-            
-            # Execute the function
-            # Create KernelArguments if variables exist
-            if step.tool_decision.parameters:
-                from semantic_kernel.functions import KernelArguments
-                kernel_args = KernelArguments(**step.tool_decision.parameters)
-                result = await kernel_function.invoke(self.kernel, kernel_args)
-            else:
-                result = await kernel_function.invoke(self.kernel)
-            
-            step.status = StepStatus.COMPLETED.value
-            step.result = {"output": str(result), "success": True}
-            
-            step_result = {
-                "step_id": step.step_id,
-                "status": "completed",
-                "output": str(result),
-                "execution_time": 0  # We don't have timing fields in ExecutionStep
-            }
-            
-            logger.info(
-                "Step executed successfully",
-                step_id=step.step_id
-            )
-            
-            return step_result
-            
-        except Exception as e:
-            step.status = StepStatus.FAILED.value
-            step.error = str(e)
-            
-            logger.error(
-                "Step execution failed",
-                step_id=step.step_id,
-                error=str(e)
-            )
-            
-            return {
-                "step_id": step.step_id,
-                "status": "failed",
-                "error_message": str(e),
-                "execution_time": 0
-            }
-    
-    def _parse_function_name(self, function_name: str) -> tuple[Optional[str], str]:
-        """
-        Parse function name to extract plugin and function.
-        
-        Args:
-            function_name: Full function name
-            
-        Returns:
-            Tuple of (plugin_name, function_name)
-        """
-        if "." in function_name:
-            parts = function_name.split(".", 1)
-            return parts[0], parts[1]
-        return None, function_name
-    
-    def _compile_final_output(self, step_results: List[Dict[str, Any]]) -> str:
-        """
-        Compile final output from step results.
-        
-        Args:
-            step_results: Results from all executed steps
-            
-        Returns:
-            Compiled final output
-        """
-        outputs = []
-        for result in step_results:
-            if result["status"] == "completed" and result.get("output"):
-                outputs.append(result["output"])
-        
-        if not outputs:
-            return "Plan executed but no output generated"
-        
-        # If single output, return it directly
-        if len(outputs) == 1:
-            return outputs[0]
-        
-        # Multiple outputs, combine them
-        return "\n\n".join(f"Step {i+1}: {output}" for i, output in enumerate(outputs))
-    
-    async def validate_plan(self, plan: Plan, rbac_context: RBACContext) -> Dict[str, Any]:
-        """
-        Validate a plan before execution.
-        
-        Args:
-            plan: Plan to validate
-            rbac_context: User's RBAC context
-            
-        Returns:
-            Validation result
-        """
-        try:
-            validation_result = {
-                "valid": True,
-                "errors": [],
-                "warnings": [],
-                "estimated_duration": 0
-            }
-            
-            # Check function permissions
-            for step in plan.steps:
-                function_name = step.function_name.split(".")[-1]
-                if not await self.rbac_service.check_function_permission(
-                    rbac_context, function_name
-                ):
-                    validation_result["errors"].append(
-                        f"No permission for function: {function_name}"
-                    )
-                    validation_result["valid"] = False
-            
-            # Check function availability
-            available_functions = await self._get_filtered_functions(rbac_context)
-            available_names = {f["name"] for f in available_functions}
-            
-            for step in plan.steps:
-                function_name = step.function_name.split(".")[-1]
-                if function_name not in available_names:
-                    validation_result["errors"].append(
-                        f"Function not available: {function_name}"
-                    )
-                    validation_result["valid"] = False
-            
-            # Estimate duration (simplified)
-            validation_result["estimated_duration"] = len(plan.steps) * 2  # 2 seconds per step
-            
-            # Check for potential issues
-            if len(plan.steps) > 10:
-                validation_result["warnings"].append(
-                    "Plan has many steps, execution may take longer"
-                )
-            
-            logger.debug(
-                "Plan validation completed",
-                plan_id=plan.id,
-                valid=validation_result["valid"],
-                errors_count=len(validation_result["errors"])
-            )
-            
-            return validation_result
-            
-        except Exception as e:
-            logger.error(
-                "Plan validation failed",
-                plan_id=plan.id,
-                error=str(e)
-            )
-            
-            return {
-                "valid": False,
-                "errors": [f"Validation error: {str(e)}"],
-                "warnings": [],
-                "estimated_duration": 0
-            }
-    
-    async def _create_basic_plan(
-        self,
-        user_request: str,
-        rbac_context: RBACContext,
-        conversation_context: Optional[List[Dict[str, Any]]],
-        available_functions: List[Dict[str, Any]]
-    ) -> Plan:
-        """Create a basic plan without Semantic Kernel planners."""
-        
-        # Simple intent detection based on keywords
-        request_lower = user_request.lower()
-        
-        # Determine plan type based on keywords
-        if any(keyword in request_lower for keyword in ["sales", "revenue", "opportunity", "performance", "data", "sql", "query"]):
-            plan_type = PlanType.SQL_ONLY
-            agent_type = "sql_agent"
-        elif any(keyword in request_lower for keyword in ["contact", "account", "relationship", "who", "associated", "connection"]):
-            plan_type = PlanType.GRAPH_ONLY  
-            agent_type = "graph_agent"
-        elif any(keyword in request_lower for keyword in ["sales data", "contact", "account revenue"]):
-            plan_type = PlanType.HYBRID
-            agent_type = "hybrid"
-        else:
-            plan_type = PlanType.NO_TOOL
-            agent_type = "direct_response"
-        
-        # Create plan
-        plan = Plan(
-            id=str(uuid4()),
-            plan_type=plan_type,
-            query=user_request,
-            user_id=rbac_context.user_id,
-            reasoning=f"Basic plan for {plan_type.value} query: {user_request}",
-            confidence=0.8,
-            steps=[],
-            status="created"
-        )
-        
-        # For NO_TOOL plans, create a direct response step
-        if plan_type == PlanType.NO_TOOL:
-            tool_decision = ToolDecision(
-                tool_name="direct_response",
-                confidence=0.9,
-                reasoning="Query is conversational and doesn't require data access",
-                parameters={"query": user_request, "user_id": rbac_context.user_id},
-                estimated_duration_ms=1000
-            )
-        else:
-            # For other plan types, use the appropriate agent
-            tool_decision = ToolDecision(
-                tool_name=agent_type,
-                confidence=0.8,
-                reasoning=f"Selected {agent_type} based on query keywords",
-                parameters={"query": user_request, "user_id": rbac_context.user_id},
-                estimated_duration_ms=5000
-            )
-        
-        step = ExecutionStep(
-            step_id=str(uuid4()),
-            step_type="agent_execution",
-            description=f"Execute {agent_type} for: {user_request}",
-            tool_decision=tool_decision,
-            depends_on=[],
-            status=StepStatus.PENDING.value
-        )
-        
-        plan.add_step(step)
-        
-        logger.info(
-            "Basic plan created",
-            plan_id=plan.id,
-            plan_type=plan_type.value,
-            agent_type=agent_type,
-            user_id=rbac_context.user_id
-        )
-        
-        return plan
 
-    async def _generate_direct_response(self, query: str, rbac_context: RBACContext) -> str:
-        """
-        Generate a direct response for conversational queries that don't require data access.
-        
-        Args:
-            query: User query
-            rbac_context: User's RBAC context
-            
-        Returns:
-            Direct response string
-        """
-        query_lower = query.lower()
-        
-        # Simple response templates for common conversational queries
-        if any(greeting in query_lower for greeting in ["hello", "hi", "hey", "good morning", "good afternoon"]):
-            return f"Hello! I'm your Salesforce Q&A assistant. I can help you find information about accounts, opportunities, contacts, and sales data. What would you like to know?"
-        
-        elif any(weather in query_lower for weather in ["weather", "temperature", "forecast"]):
-            return "I don't have access to weather information. I specialize in helping with Salesforce data and business questions. Is there anything related to your sales data or accounts I can help with?"
-        
-        elif "artificial intelligence" in query_lower or "ai" in query_lower:
-            return "Artificial Intelligence (AI) refers to computer systems that can perform tasks typically requiring human intelligence, such as learning, reasoning, and problem-solving. I'm an AI assistant designed specifically to help with Salesforce data analysis and business intelligence. How can I assist you with your business data?"
-        
-        elif "joke" in query_lower:
-            return "Here's a business joke for you: Why don't salespeople ever get lost? Because they always know where the leads are! 😄 Now, is there anything related to your actual leads or sales data I can help you with?"
-        
-        elif "time" in query_lower:
-            return "I don't have access to current time information, but I can help you analyze time-based trends in your sales data! Would you like to see revenue trends, opportunity timelines, or other time-based business metrics?"
-        
-        elif "coffee" in query_lower:
-            return "I can't help with coffee brewing, but I can definitely help perk up your business insights! Would you like to see your latest sales performance, top opportunities, or account analytics?"
-        
-        elif any(thanks in query_lower for thanks in ["thank", "thanks"]):
-            return "You're welcome! I'm here to help with your Salesforce data and business questions anytime. Feel free to ask about accounts, opportunities, contacts, or sales analytics."
-        
-        else:
-            return f"I'm a specialized Salesforce Q&A assistant focused on helping with business data, accounts, opportunities, and sales analytics. For general questions like '{query}', I'd recommend using a general-purpose AI assistant. However, I'd be happy to help you with any Salesforce or business-related questions!"
+            # Extract tool calls
+            tool_calls = planner_message.get("tool_calls", [])
+            if not tool_calls:
+                # No tool calls, treat as direct response
+                content = planner_message.get("content", "I can help you with your request.")
+                return {
+                    "has_function_calls": False,
+                    "assistant_message": content,
+                    "raw_response": content,
+                    "execution_plan": []
+                }
+
+            # Build execution plan from tool calls
+            execution_plan = []
+            for i, tool_call in enumerate(tool_calls):
+                function_info = tool_call.get("function", {})
+                function_name = function_info.get("name", "")
+
+                # Parse arguments
+                try:
+                    args = json.loads(function_info.get("arguments", "{}"))
+                except json.JSONDecodeError:
+                    args = {}
+
+                query = args.get("query", user_request)
+                accounts_mentioned = args.get("accounts_mentioned")
+
+                execution_plan.append({
+                    "step_order": i + 1,
+                    "function_name": function_name,
+                    "query": query,
+                    "accounts_mentioned": accounts_mentioned,
+                    "tool_call_id": tool_call.get("id", ""),
+                    "arguments": args
+                })
+
+            result = {
+                "has_function_calls": True,
+                "execution_plan": execution_plan,
+                "planner_response": planner_resp,
+                "raw_response": planner_message.get("content")
+            }
+
+            logger.info(
+                "Auto function calling plan created",
+                user_id=rbac_context.user_id,
+                has_function_calls=result["has_function_calls"],
+                total_steps=len(execution_plan)
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(
+                "Auto function calling planning failed",
+                user_id=rbac_context.user_id,
+                error=str(e)
+            )
+            # Return fallback direct response
+            return {
+                "has_function_calls": False,
+                "assistant_message": "I apologize, but I encountered an error while processing your request. Please try again.",
+                "raw_response": "I apologize, but I encountered an error while processing your request. Please try again.",
+                "execution_plan": [],
+                "error": str(e)
+            }

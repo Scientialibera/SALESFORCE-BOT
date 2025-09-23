@@ -365,11 +365,12 @@ class SQLService:
     ) -> QueryResult:
         """
         Execute SQL query against the database.
-        
+        This method is now simplified since actual query execution happens in SQL agent tools.
+
         Args:
             query: SQL query to execute
             parameters: Optional query parameters
-            
+
         Returns:
             Query execution result
         """
@@ -377,52 +378,11 @@ class SQLService:
             # Return dummy data in dev mode
             if self.dev_mode:
                 return self._get_dummy_sql_data(query)
-            
-            # Add row limit to prevent large result sets
-            limited_query = self._add_row_limit(query)
-            
-            # Execute the query
-            with pyodbc.connect(
-                self.connection_string,
-                timeout=self.query_timeout_seconds
-            ) as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(limited_query)
-                    
-                    # Fetch results
-                    columns = [desc[0] for desc in cursor.description] if cursor.description else []
-                    rows = cursor.fetchall()
-                    
-                    # Convert rows to list of dictionaries
-                    data = []
-                    for row in rows:
-                        row_dict = {columns[i]: row[i] for i in range(len(columns))}
-                        data.append(row_dict)
-                    
-                    return QueryResult(
-                        success=True,
-                        data=data,
-                        metadata={
-                            "columns": columns,
-                            "row_count": len(data),
-                            "query": limited_query,
-                            "has_more_data": len(data) >= self.max_rows
-                        },
-                        rows_affected=len(data),
-                        execution_time_ms=0,  # Will be set by caller
-                        error_message=None
-                    )
-                    
-        except pyodbc.Error as db_error:
-            logger.error("Database error during query execution", error=str(db_error))
-            return QueryResult(
-                success=False,
-                error_message=f"Database error: {str(db_error)}",
-                data=[],
-                metadata={},
-                rows_affected=0,
-                execution_time_ms=0
-            )
+
+            # In production, this would execute against the lakehouse
+            # For now, returning dummy data for all cases until agent tools are properly used
+            return self._get_dummy_sql_data(query)
+
         except Exception as e:
             logger.error("Unexpected error during query execution", error=str(e))
             return QueryResult(
@@ -434,164 +394,9 @@ class SQLService:
                 execution_time_ms=0
             )
     
-    def _add_row_limit(self, query: str) -> str:
-        """
-        Add row limit to query if not already present.
-        
-        Args:
-            query: Original SQL query
-            
-        Returns:
-            Query with row limit
-        """
-        query_upper = query.upper().strip()
-        
-        # Check if TOP clause already exists
-        if "SELECT TOP" in query_upper:
-            return query
-        
-        # Check if ORDER BY exists for OFFSET/FETCH
-        if "OFFSET" in query_upper and "FETCH" in query_upper:
-            return query
-        
-        # Add TOP clause to SELECT statements
-        if query_upper.startswith("SELECT"):
-            return query.replace("SELECT", f"SELECT TOP {self.max_rows}", 1)
-        elif query_upper.startswith("WITH"):
-            # For CTE queries, add TOP to the final SELECT
-            # This is a simplified approach - more complex CTEs might need better handling
-            lines = query.split('\n')
-            for i, line in enumerate(lines):
-                if line.strip().upper().startswith("SELECT") and "TOP" not in line.upper():
-                    lines[i] = line.replace("SELECT", f"SELECT TOP {self.max_rows}", 1)
-                    break
-            return '\n'.join(lines)
-        
-        return query
     
-    async def execute_natural_language_query(
-        self,
-        natural_query: str,
-        rbac_context: RBACContext,
-        limit: int = 50
-    ) -> Dict[str, Any]:
-        """
-        Execute a natural language query against the lakehouse.
-        
-        This method converts natural language to SQL and executes it against
-        the data lakehouse containing structured Salesforce and SharePoint data.
-        
-        Args:
-            natural_query: Natural language query from user
-            rbac_context: User's RBAC context for filtering
-            limit: Maximum number of records to return
-            
-        Returns:
-            Dictionary with success status, data, and metadata
-        """
-        try:
-            # For now, this is a simplified implementation
-            # In a full implementation, this would use an LLM to convert
-            # natural language to SQL and then execute it
-            
-            # Example: Convert simple queries to SQL
-            sql_query = self._convert_natural_language_to_sql(natural_query, limit)
-            
-            result = await self.execute_query(sql_query, rbac_context)
-            
-            return {
-                "success": result.success,
-                "data": result.data,
-                "sql_query": sql_query,
-                "execution_time_ms": result.execution_time_ms,
-                "error": result.error_message if not result.success else None
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to execute natural language query: {e}")
-            return {
-                "success": False,
-                "data": [],
-                "sql_query": None,
-                "execution_time_ms": 0,
-                "error": str(e)
-            }
     
-    def _convert_natural_language_to_sql(self, natural_query: str, limit: int) -> str:
-        """
-        Convert natural language to SQL query.
-        
-        This is a simplified implementation. In production, this would use
-        an LLM with the lakehouse schema to generate proper SQL.
-        
-        Args:
-            natural_query: Natural language query
-            limit: Record limit
-            
-        Returns:
-            SQL query string
-        """
-        # Simplified conversion - in practice, use an LLM for this
-        natural_lower = natural_query.lower()
-        
-        if "opportunities" in natural_lower and "account" in natural_lower:
-            return f"""
-            SELECT TOP {limit} 
-                o.id, o.name, o.amount, o.stage, o.close_date,
-                a.name as account_name, a.id as account_id
-            FROM opportunities o
-            JOIN accounts a ON o.account_id = a.id
-            ORDER BY o.amount DESC
-            """
-        elif "accounts" in natural_lower:
-            return f"""
-            SELECT TOP {limit} 
-                id, name, owner_email, created_at, updated_at
-            FROM accounts
-            ORDER BY created_at DESC
-            """
-        elif "contacts" in natural_lower:
-            return f"""
-            SELECT TOP {limit} 
-                id, first_name, last_name, email, account_id
-            FROM contacts
-            ORDER BY last_name, first_name
-            """
-        else:
-            # Default query
-            return f"""
-            SELECT TOP {limit} 
-                'data_type' as source_table,
-                COUNT(*) as record_count
-            FROM accounts
-            """
     
-    async def get_table_preview(
-        self,
-        schema_name: str,
-        table_name: str,
-        rbac_context: RBACContext,
-        limit: int = 10
-    ) -> QueryResult:
-        """
-        Get a preview of table data from the lakehouse.
-        
-        Args:
-            schema_name: Database schema name in the lakehouse
-            table_name: Table name containing Salesforce/SharePoint data
-            rbac_context: User's RBAC context
-            limit: Number of rows to preview
-            
-        Returns:
-            Query result with preview data
-        """
-        preview_query = f"SELECT TOP {limit} * FROM [{schema_name}].[{table_name}]"
-        
-        return await self.execute_query(
-            preview_query,
-            rbac_context,
-            use_cache=True
-        )
     
     def _get_dummy_sql_data(self, query: str) -> QueryResult:
         """

@@ -60,18 +60,21 @@ class CosmosDBSettings(BaseSettings):
 
 
 class GremlinSettings(BaseSettings):
-    """Gremlin graph database configuration."""
-    
-    endpoint: str = Field(alias="AZURE_COSMOS_GREMLIN_ENDPOINT", description="Gremlin endpoint")
-    database_name: str = Field(default="graphdb", alias="AZURE_COSMOS_GREMLIN_DATABASE", description="Graph database name")
-    graph_name: str = Field(default="account_graph", alias="AZURE_COSMOS_GREMLIN_GRAPH", description="Graph container name")
+    """Gremlin graph database configuration.
+
+    The `endpoint` is optional to make local development and tests easier when
+    a Gremlin server is not available. Runtime code should check for a
+    configured endpoint and skip initializing Gremlin clients when it is None.
+    """
+
+    endpoint: Optional[str] = Field(default=None, description="Gremlin endpoint")
+    database_name: str = Field(default="graphdb", description="Graph database name")
+    graph_name: str = Field(default="account_graph", description="Graph container name")
     max_concurrent_connections: int = Field(default=10, description="Max concurrent connections")
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")
-    
+
     class Config:
-        env_prefix = "AZURE_COSMOS_GREMLIN_"
-        env_file = ".env"
-        extra = "ignore"
+        env_prefix = "GREMLIN_"
         env_file = ".env"
         extra = "ignore"
 
@@ -95,8 +98,11 @@ class SearchSettings(BaseSettings):
 class FabricLakehouseSettings(BaseSettings):
     """Microsoft Fabric lakehouse configuration for document retrieval and SQL queries."""
     
-    sql_endpoint: str = Field(..., description="Fabric lakehouse SQL endpoint")
-    database: str = Field(alias="FABRIC_SQL_DATABASE", description="Lakehouse database name")
+    # Make these optional for local development and test runs where Fabric is
+    # not available. Runtime code should check for an endpoint/database and
+    # skip initializing Fabric clients when they're not provided.
+    sql_endpoint: Optional[str] = Field(default=None, description="Fabric lakehouse SQL endpoint")
+    database: Optional[str] = Field(default=None, description="Lakehouse database name")
     workspace_id: Optional[str] = Field(default=None, description="Fabric workspace ID")
     contracts_table: str = Field(default="contracts_text", description="Contracts table name")
     connection_timeout: int = Field(default=30, description="Connection timeout in seconds")
@@ -278,7 +284,7 @@ class SecuritySettings(BaseSettings):
 class FeatureFlagsSettings(BaseSettings):
     """Feature flags configuration."""
     
-    enable_semantic_kernel: bool = Field(default=True, description="Enable Semantic Kernel features")
+    # Semantic Kernel removed - using simplified approach
     enable_advanced_analytics: bool = Field(default=True, description="Enable advanced analytics")
     enable_experimental_features: bool = Field(default=False, description="Enable experimental features")
     enable_performance_monitoring: bool = Field(default=True, description="Enable performance monitoring")

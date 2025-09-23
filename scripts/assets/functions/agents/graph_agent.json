@@ -18,10 +18,10 @@
   "required": ["query"]
   },
   "agents": ["graph_agent"],
-  "metadata": {
+    "metadata": {
     "agent_type": "graph",
     "category": "relationship_query",
-    "underlying_functions": ["query_account_relationships", "resolve_account_context"],
+    "underlying_functions": ["graph_agent_function", "account_resolver_function"],
     "data_sources": ["gremlin_graph"],
     "partition_key": "graph_agent"
   },

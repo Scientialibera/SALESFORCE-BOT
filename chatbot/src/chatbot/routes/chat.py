@@ -10,6 +10,7 @@ This module implements the sophisticated chat logic where:
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from uuid import uuid4
+import json
 import structlog
 from fastapi import APIRouter, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -143,6 +144,17 @@ async def send_message(
     account_resolver_service = getattr(app_state, "account_resolver_service", None)
     sql_agent = getattr(app_state, "sql_agent", None)
     graph_agent = getattr(app_state, "graph_agent", None)
+    planner_service = getattr(app_state, "planner_service", None)
+
+    # In dev_mode, prefer the lightweight AccountResolverService_ helper for deterministic accounts
+    dev_account_resolver = None
+    if settings.dev_mode:
+        try:
+            from chatbot.services.account_resolver_service import AccountResolverService_ as DevAccountResolver
+            dev_account_resolver = DevAccountResolver
+        except Exception as e:
+            logger.warning("Failed to import dev account resolver", error=str(e))
+            dev_account_resolver = None
 
     assistant_response = ""
     sources = []
@@ -151,52 +163,212 @@ async def send_message(
     plan_type = "unknown"
 
     try:
-        # Step 1: Simple plan determination based on keywords
-        plan_type, should_use_sql, should_use_graph = await _determine_plan_type(user_message)
-        execution_metadata["plan_type"] = plan_type
+        # Step 1: Use Auto Function Calling for planning (required)
+        if not planner_service:
+            raise RuntimeError("Planner service is required but not available")
 
-        logger.info("Plan determined", plan_type=plan_type, use_sql=should_use_sql, use_graph=should_use_graph)
+        planning_result = await planner_service.plan_with_auto_function_calling(
+            user_request=user_message,
+            rbac_context=user_context
+        )
 
-        # Step 2: Resolve accounts if agents will be used
-        resolved_accounts = []
-        if (should_use_sql or should_use_graph) and account_resolver_service:
-            try:
-                resolved_accounts = await account_resolver_service.resolve_accounts_from_query(user_message, user_context)
-                execution_metadata["resolved_accounts"] = [acc.model_dump() for acc in resolved_accounts]
-                logger.info("Accounts resolved", count=len(resolved_accounts))
-            except Exception as e:
-                logger.warning("Account resolution failed", error=str(e))
+        execution_metadata["planning_result"] = planning_result
+        has_function_calls = planning_result["has_function_calls"]
+        execution_plan = planning_result["execution_plan"]
 
-        # Step 3: Execute based on plan type
-        if plan_type == "direct":
-            assistant_response = await _generate_direct_response(user_message, user_context)
+        logger.info(
+            "Auto Function Calling completed",
+            has_function_calls=has_function_calls,
+            total_steps=len(execution_plan)
+        )
+
+        # Step 2: Execute the plan
+        if not has_function_calls:
+
+            assistant_from_llm = None
+            if isinstance(planning_result, dict):
+                assistant_from_llm = planning_result.get("assistant_message") or planning_result.get("raw_response")
+
+            if assistant_from_llm:
+                assistant_response = assistant_from_llm
+            else:
+                # Preserve legacy fallback for robustness when the planner gave no usable text
+                assistant_response = await _generate_direct_response(user_message, user_context)
             sources = []
-
-        elif plan_type == "sql" and should_use_sql and sql_agent:
-            sql_result = await sql_agent.execute_query(user_message, user_context, resolved_accounts)
-            assistant_response, sql_sources = await _format_sql_response(sql_result, user_message)
-            sources.extend(sql_sources)
-
-        elif plan_type == "graph" and should_use_graph and graph_agent:
-            graph_result = await graph_agent.execute_query(user_message, user_context, resolved_accounts)
-            assistant_response, graph_sources = await _format_graph_response(graph_result, user_message)
-            sources.extend(graph_sources)
-
-        elif plan_type == "hybrid" and should_use_sql and should_use_graph and sql_agent and graph_agent:
-            try:
-                sql_result = await sql_agent.execute_query(user_message, user_context, resolved_accounts)
-                graph_result = await graph_agent.execute_query(user_message, user_context, resolved_accounts)
-
-                assistant_response, combined_sources = await _format_hybrid_response(sql_result, graph_result, user_message)
-                sources.extend(combined_sources)
-            except Exception as e:
-                logger.error("Hybrid execution failed", error=str(e))
-                assistant_response = f"I encountered an error while retrieving information: {str(e)}"
+            plan_type = "direct"
 
         else:
-            # Fallback to direct response
-            assistant_response = await _generate_direct_response(user_message, user_context)
-            plan_type = "fallback"
+            # Iteratively execute planner/tool cycles: execute current plan, then re-call planner
+            # with the user question + tool outputs until the planner returns a final assistant message.
+            MAX_ITERATIONS = 5
+            iteration = 0
+
+            all_results = []
+            combined_sources = []
+            execution_metadata["execution_steps"] = []
+
+            # Start with the initial planning result
+            current_plan = planning_result
+
+            while iteration < MAX_ITERATIONS:
+                iteration += 1
+                if not current_plan.get("has_function_calls"):
+                    # Planner provided a final assistant message; prefer assistant_message, then raw_response.
+                    assistant_from_llm = current_plan.get("assistant_message") or current_plan.get("raw_response")
+                    if assistant_from_llm:
+                        assistant_response = assistant_from_llm
+                    else:
+                        # No assistant text: combine collected tool results
+                        assistant_response = await _combine_sequential_results(all_results, user_message)
+                    break
+
+                # Execute each step in the returned execution plan
+                for step in current_plan.get("execution_plan", []):
+                    step_order = step.get("step_order")
+                    function_name = step.get("function_name")
+                    accounts_mentioned = step.get("accounts_mentioned")
+                    query = step.get("query")
+
+                    logger.info(
+                        "Executing function call",
+                        step=step_order,
+                        function_name=function_name,
+                        accounts_mentioned=accounts_mentioned
+                    )
+
+                    step_metadata = {
+                        "step_order": step_order,
+                        "function_name": function_name,
+                        "accounts_mentioned": accounts_mentioned,
+                        "query": query
+                    }
+
+                    try:
+                        # Resolve accounts if mentioned
+                        resolved_accounts = []
+                        if accounts_mentioned:
+                            try:
+                                # In dev_mode, if we have the AccountResolverService_ helper AND the
+                                # TF-IDF-based AccountResolverService is available, fit the TF-IDF
+                                # filter with the dummy accounts so that subsequent resolution uses
+                                # the deterministic demo data.
+                                if dev_account_resolver is not None and account_resolver_service is not None:
+                                    try:
+                                        dummy_accounts = await dev_account_resolver.get_dummy_accounts(user_context)
+                                        await account_resolver_service._ensure_tfidf_fitted(dummy_accounts, user_context)
+                                    except Exception:
+                                        # If anything fails, fall back to using the dev resolver directly
+                                        resolved_accounts = await dev_account_resolver.resolve_account_names(accounts_mentioned, user_context)
+
+                                if not resolved_accounts and account_resolver_service:
+                                    resolved_accounts = await account_resolver_service.resolve_account_names(
+                                        accounts_mentioned, user_context
+                                    )
+                                # If still empty and dev resolver exists, fall back to it
+                                if not resolved_accounts and dev_account_resolver is not None:
+                                    resolved_accounts = await dev_account_resolver.resolve_account_names(accounts_mentioned, user_context)
+
+                                step_metadata["resolved_accounts"] = [acc.model_dump() for acc in resolved_accounts]
+                                logger.info(
+                                    "Accounts resolved for step",
+                                    step=step_order,
+                                    mentioned=len(accounts_mentioned),
+                                    resolved=len(resolved_accounts)
+                                )
+                            except Exception as e:
+                                logger.warning("Account resolution failed for step", step=step_order, error=str(e))
+
+                        # Execute the function call
+                        if function_name == "sql_agent" and sql_agent:
+                            result = await _execute_sql_agent_step(
+                                sql_agent, query, resolved_accounts, user_context
+                            )
+
+                        elif function_name == "graph_agent" and graph_agent:
+                            result = await _execute_graph_agent_step(
+                                graph_agent, query, resolved_accounts, user_context
+                            )
+
+                        else:
+                            raise RuntimeError(f"Unknown function: {function_name}")
+
+                        # Store step results with raw data for planner
+                        step_result = {
+                            "step_order": step_order,
+                            "function_name": function_name,
+                            "result": result,
+                        }
+                        all_results.append(step_result)
+
+                        # Prepare data to feed back to planner
+                        try:
+                            raw_json = json.dumps(result, default=str)
+                        except Exception:
+                            raw_json = str(result)
+
+                        # Feed raw tool result back to planner for natural language generation
+                        all_results[-1]["planner_feedback"] = {
+                            "raw_result": raw_json,
+                            "function_name": function_name,
+                            "query": query,
+                        }
+
+                        step_metadata["success"] = True
+                        step_metadata["result_summary"] = f"Executed {function_name} successfully"
+
+                    except Exception as e:
+                        logger.error(
+                            "Function call execution failed",
+                            step=step_order,
+                            function_name=function_name,
+                            error=str(e)
+                        )
+                        step_metadata["success"] = False
+                        step_metadata["error"] = str(e)
+
+                        # Add error result but continue with next steps
+                        error_result = {
+                            "step_order": step_order,
+                            "function_name": function_name,
+                            "error": str(e),
+                            "formatted_response": f"Step {step_order} ({function_name}) encountered an error: {str(e)}"
+                        }
+                        all_results.append(error_result)
+
+                    execution_metadata["execution_steps"].append(step_metadata)
+
+                # After executing current plan steps, feed tool results back to planner for natural language generation
+                conversation_context = []
+                for r in all_results:
+                    fb = r.get("planner_feedback") or {}
+                    raw = fb.get("raw_result")
+                    function_name = fb.get("function_name")
+                    query = fb.get("query")
+
+                    if raw and function_name:
+                        # Create assistant message with tool result for planner to process
+                        assistant_message = f"Tool: {function_name}\nQuery: {query}\nResult: {raw}"
+                        conversation_context.append({"user_message": user_message, "assistant_message": assistant_message})
+
+                # Re-run planner with new context to see if final assistant text is produced
+                try:
+                    current_plan = await planner_service.plan_with_auto_function_calling(
+                        user_request=user_message,
+                        rbac_context=user_context,
+                        conversation_context=conversation_context or None
+                    )
+                except Exception as e:
+                    logger.error("Re-planning after tool execution failed", error=str(e))
+                    # Stop looping and fallback to combining results
+                    assistant_response = await _combine_sequential_results(all_results, user_message)
+                    break
+
+            # If loop exited without setting assistant_response, build a fallback
+            if not assistant_response:
+                assistant_response = await _combine_sequential_results(all_results, user_message)
+
+            sources = []  # Sources will be handled by the planner in natural language response
+            plan_type = f"iterative_{len(all_results)}_steps"
 
     except Exception as e:
         logger.error("Chat processing failed", error=str(e), session_id=session_id)
@@ -243,32 +415,65 @@ async def send_message(
     )
 
 
-async def _determine_plan_type(user_message: str) -> tuple[str, bool, bool]:
-    """Determine plan type based on user message keywords."""
-    message_lower = user_message.lower()
 
-    # Check for SQL-related keywords
-    sql_keywords = ["sales", "revenue", "opportunity", "performance", "data", "amount", "count", "total", "sum"]
-    has_sql_intent = any(keyword in message_lower for keyword in sql_keywords)
 
-    # Check for Graph-related keywords
-    graph_keywords = ["contact", "relationship", "who", "associated", "connection", "document", "contract"]
-    has_graph_intent = any(keyword in message_lower for keyword in graph_keywords)
+async def _execute_sql_agent_step(sql_agent, query: str, resolved_accounts, rbac_context):
+    """Execute a single SQL agent step."""
+    # Convert resolved accounts to the format expected by sql_agent
+    account_ids = [acc.id for acc in resolved_accounts] if resolved_accounts else []
 
-    # Check for conversational keywords
-    conversational_keywords = ["hello", "hi", "hey", "thanks", "thank you", "help", "what can you do"]
-    is_conversational = any(keyword in message_lower for keyword in conversational_keywords)
+    # Call the SQL agent function directly
+    return await sql_agent.sql_agent(
+        query=query,
+        accounts_mentioned=account_ids
+    )
 
-    if is_conversational:
-        return "direct", False, False
-    elif has_sql_intent and has_graph_intent:
-        return "hybrid", True, True
-    elif has_sql_intent:
-        return "sql", True, False
-    elif has_graph_intent:
-        return "graph", False, True
-    else:
-        return "direct", False, False
+
+async def _execute_graph_agent_step(graph_agent, query: str, resolved_accounts, rbac_context):
+    """Execute a single Graph agent step."""
+    # Convert resolved accounts to the format expected by graph_agent
+    account_ids = [acc.id for acc in resolved_accounts] if resolved_accounts else []
+
+    # Call the Graph agent function directly
+    return await graph_agent.graph_agent(
+        query=query,
+        accounts_mentioned=account_ids
+    )
+
+
+async def _combine_sequential_results(all_results, user_message: str) -> str:
+    """Combine results from sequential function calls into a coherent response."""
+    if not all_results:
+        return "I wasn't able to process your request. Please try again."
+
+    # Collect all tool results for summarization
+    tool_summaries = []
+
+    for i, result in enumerate(all_results, 1):
+        function_name = result.get("function_name", "unknown")
+
+        if "error" in result:
+            tool_summaries.append(f"Step {i} ({function_name}): Error - {result.get('error', 'Unknown error')}")
+        else:
+            raw_result = result.get("result", {})
+            # Create a brief summary of the result
+            if isinstance(raw_result, dict):
+                data_count = len(raw_result.get("data", []))
+                if data_count > 0:
+                    tool_summaries.append(f"Step {i} ({function_name}): Found {data_count} results")
+                else:
+                    tool_summaries.append(f"Step {i} ({function_name}): No data found")
+            else:
+                tool_summaries.append(f"Step {i} ({function_name}): Completed")
+
+    # Create a basic combined response
+    response_parts = [
+        f"I've processed your request using {len(all_results)} tool(s):",
+        "\n".join(f"• {summary}" for summary in tool_summaries),
+        "\nFor detailed information, please refer to the specific results above."
+    ]
+
+    return "\n".join(response_parts)
 
 
 async def _generate_direct_response(query: str, rbac_context: RBACContext) -> str:
@@ -285,129 +490,8 @@ async def _generate_direct_response(query: str, rbac_context: RBACContext) -> st
         return "I'm a specialized Salesforce Q&A assistant focused on helping with business data, accounts, opportunities, and sales analytics. How can I help you with your Salesforce data today?"
 
 
-async def _format_sql_response(sql_result: Dict[str, Any], user_query: str) -> tuple[str, List[Dict[str, Any]]]:
-    """Format SQL agent result into natural language response with sources."""
-    if not sql_result or sql_result.get("error"):
-        return "I couldn't retrieve the requested data from the database. Please try rephrasing your question.", []
-
-    # Extract data and metadata
-    data = sql_result.get("data", [])
-    query_executed = sql_result.get("query", "")
-    table_info = sql_result.get("tables_used", [])
-
-    if not data:
-        return "No data was found matching your query.", []
-
-    # Generate natural language response
-    response_parts = []
-
-    if len(data) == 1:
-        response_parts.append("Here's what I found:")
-    else:
-        response_parts.append(f"I found {len(data)} results:")
-
-    # Format data into readable text
-    for i, row in enumerate(data[:5]):  # Limit to 5 rows for readability
-        if isinstance(row, dict):
-            row_text = ", ".join([f"{k}: {v}" for k, v in row.items() if v is not None])
-            response_parts.append(f"• {row_text}")
-
-    if len(data) > 5:
-        response_parts.append(f"... and {len(data) - 5} more results")
-
-    # Create sources
-    sources = []
-    for table in table_info:
-        sources.append({
-            "type": "sql",
-            "title": f"Database Table: {table}",
-            "content": query_executed,
-            "metadata": {"table_name": table, "rows_returned": len(data)}
-        })
-
-    return "\n".join(response_parts), sources
 
 
-async def _format_graph_response(graph_result: Dict[str, Any], user_query: str) -> tuple[str, List[Dict[str, Any]]]:
-    """Format Graph agent result into natural language response with sources."""
-    if not graph_result or graph_result.get("error"):
-        return "I couldn't retrieve the requested relationship data. Please try rephrasing your question.", []
-
-    # Extract data and metadata
-    relationships = graph_result.get("relationships", [])
-    documents = graph_result.get("documents", [])
-    query_executed = graph_result.get("query", "")
-
-    if not relationships and not documents:
-        return "No relationships or documents were found matching your query.", []
-
-    # Generate natural language response
-    response_parts = []
-
-    if relationships:
-        response_parts.append(f"I found {len(relationships)} relationship(s):")
-        for rel in relationships[:3]:  # Limit for readability
-            if isinstance(rel, dict):
-                from_entity = rel.get("from", "Unknown")
-                to_entity = rel.get("to", "Unknown")
-                rel_type = rel.get("relationship", "connected to")
-                response_parts.append(f"• {from_entity} {rel_type} {to_entity}")
-
-    if documents:
-        response_parts.append(f"\nRelated documents ({len(documents)}):")
-        for doc in documents[:3]:  # Limit for readability
-            if isinstance(doc, dict):
-                doc_name = doc.get("name", "Document")
-                doc_summary = doc.get("summary", "No summary available")
-                response_parts.append(f"• {doc_name}: {doc_summary}")
-
-    # Create sources
-    sources = []
-    if relationships:
-        sources.append({
-            "type": "graph",
-            "title": "Relationship Data",
-            "content": query_executed,
-            "metadata": {"relationships_count": len(relationships)}
-        })
-
-    for doc in documents:
-        if isinstance(doc, dict) and doc.get("url"):
-            sources.append({
-                "type": "document",
-                "title": doc.get("name", "Document"),
-                "content": doc.get("summary", ""),
-                "url": doc.get("url"),
-                "metadata": doc
-            })
-
-    return "\n".join(response_parts), sources
-
-
-async def _format_hybrid_response(sql_result: Dict[str, Any], graph_result: Dict[str, Any], user_query: str) -> tuple[str, List[Dict[str, Any]]]:
-    """Format combined SQL and Graph results into natural language response."""
-    sql_response, sql_sources = await _format_sql_response(sql_result, user_query)
-    graph_response, graph_sources = await _format_graph_response(graph_result, user_query)
-
-    # Combine responses
-    response_parts = []
-
-    if sql_response and "No data was found" not in sql_response and "couldn't retrieve" not in sql_response:
-        response_parts.append("**Data Summary:**")
-        response_parts.append(sql_response)
-
-    if graph_response and "No relationships" not in graph_response and "couldn't retrieve" not in graph_response:
-        if response_parts:
-            response_parts.append("\n**Relationships & Documents:**")
-        response_parts.append(graph_response)
-
-    if not response_parts:
-        return "I couldn't find any relevant data or relationships for your query. Please try rephrasing your question.", []
-
-    combined_response = "\n".join(response_parts)
-    combined_sources = sql_sources + graph_sources
-
-    return combined_response, combined_sources
 
 
 async def _handle_feedback(request_data: ChatRequest, unified_service: UnifiedDataService, turn_id: str, user_context: RBACContext) -> None:

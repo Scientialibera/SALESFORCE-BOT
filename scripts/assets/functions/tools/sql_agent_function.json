@@ -1,8 +1,8 @@
 {
   "id": "sql_query_function",
   "agent_type": "sql",
-  "function_name": "execute_sql_query",
-  "name": "execute_sql_query",
+  "function_name": "sql_query_function",
+  "name": "sql_query_function",
   "description": "Execute SQL queries against the Fabric Lakehouse to retrieve sales and account data",
   "parameters": {
     "type": "object",

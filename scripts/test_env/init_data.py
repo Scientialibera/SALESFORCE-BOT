@@ -332,7 +332,7 @@ class DataInitializer:
                     print('  ✓ Uploaded prompt (json):', fname)
                 else:
                     agent_name = Path(fname).stem
-                    prompt_id = f'prompt_{agent_name}'
+                    prompt_id = f'{agent_name}'
                     try:
                         await prompts_repo.delete_prompt(prompt_id)
                     except Exception:

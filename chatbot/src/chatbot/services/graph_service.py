@@ -489,39 +489,39 @@ class GraphService:
     ) -> Dict[str, Any]:
         """
         Find relationships and retrieve related document content from lakehouse.
-        
+
         Args:
             account_ids: List of account IDs to find relationships for
             rbac_context: User's RBAC context for filtering
             relationship_types: Optional list of relationship types to include
             max_depth: Maximum traversal depth
             include_document_content: Whether to fetch document content from lakehouse
-            
+
         Returns:
             Dictionary with relationships and document content
         """
         try:
             start_time = datetime.utcnow()
-            
+
             logger.info(
                 "Finding relationships with documents",
                 account_ids=account_ids,
                 user_id=rbac_context.user_id,
                 include_content=include_document_content
             )
-            
+
             # Step 1: Find relationships using existing method
             all_relationships = []
             document_ids = set()
-            
+
             for account_id in account_ids:
                 relationships_result = await self.find_relationships(
                     [account_id], rbac_context, relationship_types, max_depth
                 )
-                
+
                 if relationships_result:
                     all_relationships.extend(relationships_result)
-                    
+
                     # Extract document IDs from relationships
                     for rel in relationships_result:
                         # Look for document references in relationship properties
@@ -529,26 +529,26 @@ class GraphService:
                             document_ids.add(rel.get("target_id"))
                         if rel.get("source_label") == "document":
                             document_ids.add(rel.get("source_id"))
-                        
+
                         # Also check relationship properties for document IDs
                         properties = rel.get("properties", {})
                         if "document_id" in properties:
                             document_ids.add(properties["document_id"])
                         if "file_id" in properties:
                             document_ids.add(properties["file_id"])
-            
+
             # Step 2: Retrieve document content from lakehouse if requested and fabric client available
             documents_content = {}
             if include_document_content and self.fabric_client and document_ids:
                 try:
                     # Filter to only accessible account documents for RBAC
                     accessible_accounts = rbac_context.access_scope.allowed_accounts
-                    
+
                     documents = await self.fabric_client.get_documents_by_ids(
                         list(document_ids),
                         account_id=accessible_accounts[0] if accessible_accounts else None
                     )
-                    
+
                     for doc in documents:
                         documents_content[doc["file_id"]] = {
                             "file_name": doc["file_name"],
@@ -559,14 +559,14 @@ class GraphService:
                             "last_modified": doc["last_modified"],
                             "content_type": doc["content_type"]
                         }
-                        
+
                 except Exception as e:
                     logger.warning(f"Failed to retrieve document content: {e}")
                     # Continue without document content
-            
+
             # Step 3: Build enriched response
             execution_time = (datetime.utcnow() - start_time).total_seconds() * 1000
-            
+
             result = {
                 "success": True,
                 "account_ids": account_ids,
@@ -580,7 +580,7 @@ class GraphService:
                     "includes_content": include_document_content and bool(self.fabric_client)
                 }
             }
-            
+
             logger.info(
                 "Relationships with documents completed",
                 account_ids=account_ids,
@@ -589,9 +589,9 @@ class GraphService:
                 document_count=len(documents_content),
                 execution_time_ms=execution_time
             )
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(
                 "Failed to find relationships with documents",

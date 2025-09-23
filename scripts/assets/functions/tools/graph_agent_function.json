@@ -1,8 +1,8 @@
 {
-  "id": "graph_relationship_query",
+  "id": "graph_agent_function",
   "agent_type": "graph",
-  "function_name": "query_account_relationships",
-  "name": "query_account_relationships",
+  "function_name": "graph_agent_function",
+  "name": "graph_agent_function",
   "description": "Query the knowledge graph to find relationships between accounts, contacts, and business entities",
   "parameters": {
     "type": "object",
