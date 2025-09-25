@@ -272,25 +272,33 @@ async def send_message(
 
                     # Execute the agent with tool calling (MVP pattern)
                     if function_name == "sql_agent":
-                        result = await _execute_sql_agent_mvp_pattern(
+                        result = await _execute_sql_agent(
                             query, resolved_account_names, user_context
                         )
                     elif function_name == "graph_agent":
-                        result = await _execute_graph_agent_mvp_pattern(
+                        result = await _execute_graph_agent(
                             query, resolved_account_names, user_context
                         )
                     else:
                         raise RuntimeError(f"Unknown function: {function_name}")
 
-                    # Record agent execution for planner injection
-                    exec_record = {
-                        "agent_name": function_name,
-                        "tool_calls": [{
+                    # Record agent execution(s) for planner injection. Support
+                    # agents returning multiple tool call results.
+                    exec_record = {"agent_name": function_name, "tool_calls": []}
+                    if isinstance(result, dict) and isinstance(result.get("tool_calls"), list):
+                        for r in result["tool_calls"]:
+                            exec_record["tool_calls"].append({
+                                "function": r.get("tool_name", function_name),
+                                "request": {"query": r.get("query")},
+                                "response": _summarize_query_result(r)
+                            })
+                    else:
+                        # Backwards-compatible single-result shape
+                        exec_record["tool_calls"].append({
                             "function": result.get("tool_name", function_name),
                             "request": {"query": query},
                             "response": _summarize_query_result(result)
-                        }]
-                    }
+                        })
                     agent_exec_records.append(exec_record)
 
                     step_metadata["success"] = True
@@ -384,8 +392,14 @@ async def send_message(
 
 
 
-async def _execute_sql_agent_mvp_pattern(query: str, resolved_account_names, rbac_context):
-    """Execute SQL agent using MVP pattern with agent tools."""
+async def _execute_sql_agent(query: str, resolved_account_names, rbac_context):
+    """Execute SQL agent and run all tool calls returned by the agent.
+
+    This runs every tool call returned by the agent LLM (not only the first)
+    and returns a dict containing a `tool_calls` list with individual result
+    objects. Each result includes tool_name, success, row_count, error, source,
+    query, and data.
+    """
     from chatbot.app import app_state
 
     # Get agent functions and system prompt
@@ -441,25 +455,24 @@ async def _execute_sql_agent_mvp_pattern(query: str, resolved_account_names, rba
         tool_choice="auto",
     )
 
-    # Extract tool calls and execute
+    # Extract tool calls and execute all of them
     agent_msg = (agent_resp.get("choices") or [{}])[0].get("message", {})
     tool_calls = agent_msg.get("tool_calls", [])
 
-    if tool_calls:
-        # Execute first tool call (SQL execution)
-        tool_call = tool_calls[0]
+    results = []
+    for tool_call in tool_calls:
         function_info = tool_call.get("function", {})
 
         try:
             args = json.loads(function_info.get("arguments", "{}"))
-        except:
+        except Exception:
             args = {}
 
         # Execute SQL service
         base_query = args.get("query") or query
         sql_result = await sql_service.execute_query(base_query, rbac_context)
 
-        return {
+        results.append({
             "tool_name": function_info.get("name", "sql_agent_function"),
             "success": getattr(sql_result, "success", True),
             "row_count": getattr(sql_result, "row_count", 0),
@@ -467,13 +480,22 @@ async def _execute_sql_agent_mvp_pattern(query: str, resolved_account_names, rba
             "source": "sql",
             "query": base_query,
             "data": getattr(sql_result, "data", None)
-        }
+        })
 
-    return {"success": False, "error": "No tool calls made"}
+    if results:
+        return {"tool_calls": results}
+
+    return {"success": False, "error": "No tool calls made", "tool_calls": []}
 
 
-async def _execute_graph_agent_mvp_pattern(query: str, resolved_account_names, rbac_context):
-    """Execute Graph agent using MVP pattern with agent tools."""
+async def _execute_graph_agent(query: str, resolved_account_names, rbac_context):
+    """Execute Graph agent and run all tool calls returned by the agent.
+
+    This runs every tool call returned by the agent LLM (not only the first)
+    and returns a dict containing a `tool_calls` list with individual result
+    objects. Each result includes tool_name, success, row_count, error, source,
+    query, bindings and data.
+    """
     from chatbot.app import app_state
 
     # Get agent functions and system prompt
@@ -529,18 +551,17 @@ async def _execute_graph_agent_mvp_pattern(query: str, resolved_account_names, r
         tool_choice="auto",
     )
 
-    # Extract tool calls and execute
+    # Extract tool calls and execute all of them
     agent_msg = (agent_resp.get("choices") or [{}])[0].get("message", {})
     tool_calls = agent_msg.get("tool_calls", [])
 
-    if tool_calls:
-        # Execute first tool call (Graph execution)
-        tool_call = tool_calls[0]
+    results = []
+    for tool_call in tool_calls:
         function_info = tool_call.get("function", {})
 
         try:
             args = json.loads(function_info.get("arguments", "{}"))
-        except:
+        except Exception:
             args = {}
 
         # Execute Graph service
@@ -548,17 +569,21 @@ async def _execute_graph_agent_mvp_pattern(query: str, resolved_account_names, r
         g_bindings = args.get("bindings") or {}
         graph_result = await graph_service.execute_query(g_query, rbac_context, bindings=g_bindings)
 
-        return {
+        results.append({
             "tool_name": function_info.get("name", "graph_agent_function"),
             "success": getattr(graph_result, "success", True),
             "row_count": getattr(graph_result, "row_count", 0),
             "error": getattr(graph_result, "error", None),
             "source": "gremlin",
             "query": g_query,
+            "bindings": g_bindings,
             "data": getattr(graph_result, "data", None)
-        }
+        })
 
-    return {"success": False, "error": "No tool calls made"}
+    if results:
+        return {"tool_calls": results}
+
+    return {"success": False, "error": "No tool calls made", "tool_calls": []}
 
 
 def _summarize_query_result(qr: Any) -> Dict[str, Any]:

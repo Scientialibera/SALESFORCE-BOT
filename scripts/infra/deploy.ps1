@@ -4,7 +4,7 @@ param(
   [Parameter(Mandatory=$true)][string]$Location,
   [ValidateSet('Core','Full')][string]$Mode = 'Core',
 
-  [string]$Rg = "$BaseName-rg",
+  [string]$Rg = "salesforcebot-rg",
   [string]$OpenAiModel = "gpt-4.1",
   [string]$OpenAiModelVersion = "2025-04-14"
 )
@@ -49,11 +49,10 @@ az config set core.only_show_errors=true --only-show-errors | Out-Null
 # Providers & extensions we need
 Ensure-Provider 'Microsoft.Web'                 # Static Web Apps
 Ensure-Provider 'Microsoft.CognitiveServices'   # AOAI
-Ensure-Provider 'Microsoft.DocumentDB'        # Cosmos DB
-Ensure-Provider 'Microsoft.Cdn'               # Azure Front Door Std/Premium
-Ensure-Provider 'Microsoft.ApiManagement'     # APIM
-Ensure-Provider 'Microsoft.Network'           # WAF policy attach
-Ensure-Ext 'afd'
+Ensure-Provider 'Microsoft.DocumentDB'          # Cosmos DB
+Ensure-Provider 'Microsoft.Cdn'                 # Azure Front Door Std/Premium
+Ensure-Provider 'Microsoft.ApiManagement'       # APIM
+Ensure-Provider 'Microsoft.Network'             # WAF policy attach
 # Container Apps env is optional infra; create if possible but don't fail hard
 Ensure-Provider 'Microsoft.App'
 Ensure-Ext 'containerapp'
@@ -105,7 +104,7 @@ $swaUrl  = "https://$swaHost"
 # -------------------- Azure OpenAI (eastus2 for quota) --------------------
 Write-Host ">>> Azure OpenAI + $OpenAiModel" -ForegroundColor Cyan
 $aoaiLoc = "eastus2"  # eastus2 has available quota always
-$AoaiName = "$BaseName-aoai-eastus2"  # This is the Azure resource name. It must be unique within the resource group.
+$AoaiName = "$BaseName-aoai-eastus2"  # Azure resource name (unique within RG)
 $aoaiCreated = $false
 
 if (-not (Exists @("cognitiveservices","account","show","-g",$Rg,"-n",$AoaiName))) {
@@ -164,10 +163,11 @@ if (-not (Exists @("cognitiveservices","account","show","-g",$Rg,"-n",$AoaiName)
 
 if ($aoaiCreated) {
   $aoaiId = az cognitiveservices account show -g $Rg -n $AoaiName --query id -o tsv
-  $aoaiEndpoint = "https://eastus2.api.cognitive.microsoft.com/"
+  # Prefer the custom subdomain endpoint
+  $aoaiEndpoint = "https://$AoaiName.openai.azure.com/"
 
   # Model deployment (idempotent) - check if specific deployment name exists
-  $deploymentName = $OpenAiModel  # Use working deployment name
+  $deploymentName = $OpenAiModel  # Use model name as deployment name for simplicity
   $existingDep = az cognitiveservices account deployment show -g $Rg -n $AoaiName --deployment-name $deploymentName -o json 2>$null | ConvertFrom-Json
   if (-not $existingDep) {
     try {
@@ -199,6 +199,7 @@ if ($aoaiCreated) {
   } else {
     Write-Host "Embedding model deployment '$embeddingDeploymentName' already exists" -ForegroundColor Green
   }
+
   # RBAC: AOAI
   Ensure-Role $miPid $aoaiId "Cognitive Services OpenAI User"
   
@@ -213,31 +214,28 @@ if ($aoaiCreated) {
     Write-Warning "Could not add current user to OpenAI resource: $($_.Exception.Message)"
   }
   
-  # Test OpenAI completions endpoint
-  Write-Host "Testing OpenAI completions endpoint..." -ForegroundColor Yellow
+  # Test OpenAI chat completions endpoint (uses Invoke-RestMethod to avoid quoting issues)
+  Write-Host "Testing OpenAI chat completions endpoint..." -ForegroundColor Yellow
   try {
-    $testToken = az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv
+    $testToken = az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv 2>$null
     if ($testToken) {
-      $testEndpoint = "https://$AoaiName.openai.azure.com/openai/deployments/gpt-41-chat/chat/completions?api-version=2024-02-01"
-      $testPayload = '{"messages":[{"role":"user","content":"Hello! This is a test."}],"max_tokens":50}'
-      
-      # Try the API call (may fail if DNS not propagated yet)
-      $testResult = curl -X POST $testEndpoint `
-        -H "Authorization: Bearer $testToken" `
-        -H "Content-Type: application/json" `
-        -d $testPayload 2>$null
-      
-      if ($LASTEXITCODE -eq 0 -and $testResult -like "*choices*") {
-        Write-Host "✓ OpenAI completions endpoint test successful!" -ForegroundColor Green
+      $testDeployment = $deploymentName
+      $testEndpoint = "https://$AoaiName.openai.azure.com/openai/deployments/$testDeployment/chat/completions?api-version=2024-02-01"
+      $testPayload = '{"messages":[{"role":"user","content":"Hello! This is a test."}],"max_tokens":20}'
+
+      $headers = @{ Authorization = "Bearer $testToken"; "Content-Type" = "application/json" }
+      $testResult = Invoke-RestMethod -Method Post -Uri $testEndpoint -Headers $headers -Body $testPayload -ErrorAction SilentlyContinue
+
+      if ($null -ne $testResult -and $testResult.choices) {
+        Write-Host "✓ OpenAI chat completions endpoint test successful!" -ForegroundColor Green
       } else {
-        Write-Host "⚠ OpenAI completions endpoint test failed (DNS may not be propagated yet)" -ForegroundColor Yellow
-        Write-Host "   You can manually test with:" -ForegroundColor Gray
-        Write-Host "   `$payload = '$testPayload'" -ForegroundColor Gray
-        Write-Host "   curl -X POST `"$testEndpoint`" -H `"Authorization: Bearer <token>`" -H `"Content-Type: application/json`" -d `$payload" -ForegroundColor Gray
+        Write-Host "⚠ OpenAI endpoint test did not return choices (may be DNS/propagation). Try manually:" -ForegroundColor Yellow
+        Write-Host ('   $payload = ''{0}''' -f $testPayload) -ForegroundColor Gray
+        Write-Host ('   Invoke-RestMethod -Method Post -Uri "{0}" -Headers @{{ Authorization = "Bearer <token>"; "Content-Type" = "application/json" }} -Body $payload' -f $testEndpoint) -ForegroundColor Gray
       }
     }
   } catch {
-    Write-Warning "Could not test OpenAI endpoint: $($_.Exception.Message)"
+    Write-Warning ("Could not test OpenAI endpoint: {0}" -f $_.Exception.Message)
   }
 } else {
   $aoaiEndpoint = "Not deployed due to errors"
@@ -299,7 +297,7 @@ if (-not (Exists @("cosmosdb","gremlin","graph","show","-g",$Rg,"-a",$CosmosGrap
 $cosmosGraphId = az cosmosdb show -g $Rg -n $CosmosGraph --query id -o tsv
 $cosmosGraphEp = az cosmosdb show -g $Rg -n $CosmosGraph --query documentEndpoint -o tsv
 
-# RBAC for MI on Cosmos (data-plane)
+# RBAC for MI on Cosmos (data-plane) - may need adjustment per your security model
 if ($aoaiCreated) {
   Ensure-Role $miPid $cosmosSqlId   "Azure AI Administrator"
   Ensure-Role $miPid $cosmosGraphId "Azure AI Administrator"
@@ -313,8 +311,13 @@ if ($Mode -eq 'Full') {
   if (-not (Exists @("apim","show","-g",$Rg,"-n",$ApimName))) {
     # publisher info
     $publisherName = $null; $publisherEmail = $null
-    try { $me = az ad signed-in-user show -o json 2>$null | ConvertFrom-Json
-          if ($me) { $publisherName=$me.displayName; $publisherEmail= if ($me.mail){$me.mail}else{$me.userPrincipalName} } } catch {}
+    try { 
+      $me = az ad signed-in-user show -o json 2>$null | ConvertFrom-Json
+      if ($me) { 
+        $publisherName = $me.displayName
+        $publisherEmail = if ($me.mail){$me.mail}else{$me.userPrincipalName}
+      }
+    } catch {}
     if (-not $publisherName -or -not $publisherEmail) {
       $acct = az account show -o json | ConvertFrom-Json
       $upn  = $acct.user.name
@@ -381,7 +384,7 @@ Write-Host ""
 Write-Host "================ DEPLOYMENT COMPLETE ================" -ForegroundColor Cyan
 Write-Host ("SWA URL              : {0}" -f $swaUrl)
 Write-Host ("AOAI endpoint        : {0}" -f $aoaiEndpoint)
-Write-Host ("AOAI chat model      : gpt-41-chat")
+Write-Host ("AOAI chat model      : {0}" -f $OpenAiModel)
 Write-Host ("AOAI embedding model : text-embedding-3-small")
 Write-Host ("Cosmos NoSQL ep      : {0}" -f $cosmosSqlEp)
 Write-Host ("Cosmos Gremlin ep    : {0}" -f $cosmosGraphEp)
