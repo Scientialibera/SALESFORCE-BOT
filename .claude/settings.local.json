@@ -1,19 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m pytest src/chatbot/tests/test_chat_route.py -v)",
-      "Bash(PYTHONPATH=src python -m pytest src/chatbot/tests/test_chat_route.py::TestPlanDetermination::test_plan_type_determination -v)",
-      "Bash(python test:*)",
-      "Bash(python:*)",
-      "Bash(PYTHONPATH=src python:*)",
-      "Bash(powershell.exe:*)",
-      "Bash(PYTHONPATH=../../src python -m chatbot.main)",
-      "Bash(PYTHONPATH=../../src uvicorn chatbot.main:app --host 0.0.0.0 --port 8000 --reload)",
-      "Bash(PYTHONPATH=../../src python -m uvicorn chatbot.main:app --host 0.0.0.0 --port 8000 --reload)",
-      "Bash(curl:*)",
-      "Bash(PYTHONPATH=../../src python -m uvicorn chatbot.main:app --host 0.0.0.0 --port 8000)",
-      "Bash(tree:*)",
-      "Bash(PYTHONPATH=chatbot/src python -m uvicorn chatbot.main:app --host 0.0.0.0 --port 8000)"
+      "Bash(powershell:*)",
+      "Bash(set PYTHONPATH=chatbotsrc)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

@@ -11,10 +11,10 @@ def test_server():
     headers = {"Content-Type": "application/json"}
     data = {
         "messages": [
-            {"role": "user", "content": "Who are you?"}
+            {"role": "user", "content": "Accounts that have SOWs similar to Microsoft's AI Chatbot engagements (i think the offer name is ai_chatbot) and then a way to contact the related account contacts"}
         ],
         "user_id": "test-user",
-        "session_id": "test-session"
+        "session_id": "test-session-sql"
     }
     
     try:

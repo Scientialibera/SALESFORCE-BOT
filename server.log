@@ -3,7 +3,7 @@
 {"app_name": "salesforce-chatbot", "version": "1.0.0", "debug": false, "event": "Created FastAPI application"}
 {"version": "1.0.0", "event": "Starting Account Q&A Bot application"}
 {"event": "Initializing Azure service clients"}
-{"endpoint": "https://salesforcebot-aoai-eastus2.openai.azure.com", "chat_deployment": "gpt-41-chat", "embedding_deployment": "text-embedding-3-small", "event": "Initializing Azure OpenAI client"}
+{"endpoint": "https://salesforcebot-aoai-eastus2.openai.azure.com", "chat_deployment": "gpt-4.1", "embedding_deployment": "text-embedding-3-small", "event": "Initializing Azure OpenAI client"}
 {"event": "Azure OpenAI client initialized successfully"}
 {"endpoint": "https://salesforcebot-cosmos-sql.documents.azure.com:443/", "database": "appdb", "event": "Initializing Cosmos DB client"}
 {"event": "Cosmos DB client initialized successfully"}
@@ -22,3 +22,59 @@
 {"event": "SQL agent enabled"}
 {"event": "Graph agent enabled"}
 {"event": "Application startup completed successfully"}
+{"request_id": "ed0d54a8", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
+DEBUG: [ed0d54a8] REQUEST START: POST http://localhost:8000/api/v1/chat
+DEBUG: [ed0d54a8] Headers: {'host': 'localhost:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-type': 'application/json', 'content-length': '113'}
+DEBUG: [ed0d54a8] Tasks before request: 4
+DEBUG: [ed0d54a8] Event loop running: True, closed: False
+DEBUG: [ed0d54a8] About to call next middleware/handler
+{"url": "http://localhost:8000/api/v1/chat", "event": "Authenticating user request"}
+{"session_id": "test-session", "turn_id": "39b5ab9c-e932-494a-9822-fb3dbdf60476", "user_id": "test-user", "event": "Processing chat message"}
+{"event": "Created Cosmos DB client with managed identity"}
+{"function_count": 4, "event": "Retrieved all function definitions"}
+{"event": "Retrieved 4 function definitions"}
+{"event": "Found 2 agent functions"}
+{"event": "Added agent function definition: graph_agent"}
+{"event": "Added agent function definition: sql_agent"}
+{"event": "Built 2 planner function definitions"}
+{"event": "Planner tools: 2 tools"}
+{"agent_name": "planner_system", "tenant_id": null, "scenario": null, "prompt_id": "planner_system", "event": "Retrieved system prompt"}
+{"event": "No conversation context provided"}
+{"endpoint": "https://salesforcebot-aoai-eastus2.openai.azure.com", "deployment": "gpt-4.1", "event": "Created Azure OpenAI client with managed identity token"}
+{"final_answer": true, "total_agent_calls": 0, "total_rounds": 1, "plan_type": "direct", "event": "Run-until-done planning completed"}
+{"error": "Chat session not found", "event": "Failed to persist conversation turn"}
+DEBUG: [ed0d54a8] Handler completed successfully
+DEBUG: [ed0d54a8] Response status: 200
+DEBUG: [ed0d54a8] Tasks after request: 5
+DEBUG: [ed0d54a8] Event loop running: True, closed: False
+{"request_id": "ed0d54a8", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "status_code": 200, "duration_ms": 6879, "event": "HTTP request completed"}
+DEBUG: [ed0d54a8] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:56726 - "POST /api/v1/chat HTTP/1.1" 200 OK
+{"request_id": "47bf6c9d", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
+DEBUG: [47bf6c9d] REQUEST START: POST http://localhost:8000/api/v1/chat
+DEBUG: [47bf6c9d] Headers: {'host': 'localhost:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-type': 'application/json', 'content-length': '123'}
+DEBUG: [47bf6c9d] Tasks before request: 4
+DEBUG: [47bf6c9d] Event loop running: True, closed: False
+DEBUG: [47bf6c9d] About to call next middleware/handler
+{"url": "http://localhost:8000/api/v1/chat", "event": "Authenticating user request"}
+{"session_id": "test-session-sql", "turn_id": "6070b52c-7167-4dcb-9cf3-35a5a5323363", "user_id": "test-user", "event": "Processing chat message"}
+{"function_count": 4, "event": "Retrieved all function definitions"}
+{"event": "Retrieved 4 function definitions"}
+{"event": "Found 2 agent functions"}
+{"event": "Added agent function definition: graph_agent"}
+{"event": "Added agent function definition: sql_agent"}
+{"event": "Built 2 planner function definitions"}
+{"event": "Planner tools: 2 tools"}
+{"agent_name": "planner_system", "tenant_id": null, "scenario": null, "prompt_id": "planner_system", "event": "Retrieved system prompt"}
+{"event": "No conversation context provided"}
+{"agent_name": "sql_agent_system", "tenant_id": null, "scenario": null, "prompt_id": "sql_agent_system", "event": "Retrieved system prompt"}
+{"agent_name": "sql_agent", "function_count": 3, "event": "Retrieved functions for agent"}
+{"final_answer": true, "total_agent_calls": 1, "total_rounds": 2, "plan_type": "agentic_1_calls_2_rounds", "event": "Run-until-done planning completed"}
+{"error": "Chat session not found", "event": "Failed to persist conversation turn"}
+DEBUG: [47bf6c9d] Handler completed successfully
+DEBUG: [47bf6c9d] Response status: 200
+DEBUG: [47bf6c9d] Tasks after request: 5
+DEBUG: [47bf6c9d] Event loop running: True, closed: False
+{"request_id": "47bf6c9d", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "status_code": 200, "duration_ms": 5881, "event": "HTTP request completed"}
+DEBUG: [47bf6c9d] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:61432 - "POST /api/v1/chat HTTP/1.1" 200 OK

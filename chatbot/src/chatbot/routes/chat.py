@@ -179,171 +179,51 @@ async def send_message(
             except Exception as e:
                 logger.warning("Failed to retrieve conversation history", error=str(e))
 
-        # Step 2: Use Auto Function Calling for planning (required)
+        # Step 2: Use run-until-done loop for full agentic planning
         if not planner_service:
             raise RuntimeError("Planner service is required but not available")
 
-        planning_result = await planner_service.plan_with_auto_function_calling(
+        # Use the new run-until-done method that matches the test file behavior
+        planning_result = await planner_service.plan_with_run_until_done_loop(
             user_request=user_message,
             rbac_context=user_context,
-            conversation_context=conversation_context
+            conversation_context=conversation_context,
+            max_rounds=8
         )
 
         execution_metadata["planning_result"] = planning_result
-        has_function_calls = planning_result["has_function_calls"]
-        execution_plan = planning_result["execution_plan"]
+        has_function_calls = planning_result.get("has_function_calls", False)
+        assistant_response = planning_result.get("assistant_message", "")
+        agentic_metadata = planning_result.get("execution_metadata", {})
+
+        # Merge agentic metadata into execution metadata
+        execution_metadata.update(agentic_metadata)
+
+        # Determine plan type based on execution
+        if planning_result.get("final_answer"):
+            if agentic_metadata.get("total_agent_calls", 0) > 0:
+                plan_type = f"agentic_{agentic_metadata.get('total_agent_calls', 0)}_calls_{agentic_metadata.get('final_round', 1)}_rounds"
+            else:
+                plan_type = "direct"
+        elif planning_result.get("timeout"):
+            plan_type = "timeout"
+        else:
+            plan_type = "error"
 
         logger.info(
-            "Auto Function Calling completed",
-            has_function_calls=has_function_calls,
-            total_steps=len(execution_plan)
+            "Run-until-done planning completed",
+            final_answer=planning_result.get("final_answer", False),
+            total_agent_calls=agentic_metadata.get("total_agent_calls", 0),
+            total_rounds=agentic_metadata.get("final_round", 0),
+            plan_type=plan_type
         )
 
-        # Step 2: Execute the plan using MVP pattern
-        if not has_function_calls:
-            # Direct response from planner
-            assistant_from_llm = None
-            if isinstance(planning_result, dict):
-                assistant_from_llm = planning_result.get("assistant_message") or planning_result.get("raw_response")
+        # If no assistant response was generated, use fallback
+        if not assistant_response:
+            assistant_response = await _generate_direct_response(user_message, user_context)
+            plan_type = "fallback"
 
-            if assistant_from_llm:
-                assistant_response = assistant_from_llm
-            else:
-                assistant_response = await _generate_direct_response(user_message, user_context)
-            sources = []
-            plan_type = "direct"
-
-        else:
-            # MVP pattern: Execute agents → Collect results → Re-inject to planner for final response
-            agent_exec_records = []
-            execution_metadata["execution_steps"] = []
-
-            # Execute each agent call in the execution plan
-            for step in execution_plan:
-                step_order = step.get("step_order")
-                function_name = step.get("function_name")
-                accounts_mentioned = step.get("accounts_mentioned")
-                query = step.get("query")
-
-                logger.info(
-                    "Executing agent step",
-                    step=step_order,
-                    function_name=function_name,
-                    accounts_mentioned=accounts_mentioned
-                )
-
-                step_metadata = {
-                    "step_order": step_order,
-                    "function_name": function_name,
-                    "accounts_mentioned": accounts_mentioned,
-                    "query": query
-                }
-
-                try:
-                    # Resolve accounts if mentioned
-                    resolved_account_names = []
-                    if accounts_mentioned:
-                        try:
-                            if dev_account_resolver is not None:
-                                resolved_accounts = await dev_account_resolver.resolve_account_names(accounts_mentioned, user_context)
-                            elif account_resolver_service:
-                                resolved_accounts = await account_resolver_service.resolve_account_names(
-                                    accounts_mentioned, user_context
-                                )
-                            else:
-                                resolved_accounts = []
-
-                            # Extract account names for agent system prompt
-                            for acc in resolved_accounts:
-                                if hasattr(acc, 'name') and acc.name:
-                                    resolved_account_names.append(acc.name)
-                                elif isinstance(acc, dict) and acc.get('name'):
-                                    resolved_account_names.append(acc['name'])
-
-                            step_metadata["resolved_accounts"] = len(resolved_accounts)
-                            logger.info(
-                                "Accounts resolved for step",
-                                step=step_order,
-                                mentioned=len(accounts_mentioned),
-                                resolved=len(resolved_accounts)
-                            )
-                        except Exception as e:
-                            logger.warning("Account resolution failed for step", step=step_order, error=str(e))
-
-                    # Execute the agent with tool calling (MVP pattern)
-                    if function_name == "sql_agent":
-                        result = await _execute_sql_agent(
-                            query, resolved_account_names, user_context
-                        )
-                    elif function_name == "graph_agent":
-                        result = await _execute_graph_agent(
-                            query, resolved_account_names, user_context
-                        )
-                    else:
-                        raise RuntimeError(f"Unknown function: {function_name}")
-
-                    # Record agent execution(s) for planner injection. Support
-                    # agents returning multiple tool call results.
-                    exec_record = {"agent_name": function_name, "tool_calls": []}
-                    if isinstance(result, dict) and isinstance(result.get("tool_calls"), list):
-                        for r in result["tool_calls"]:
-                            exec_record["tool_calls"].append({
-                                "function": r.get("tool_name", function_name),
-                                "request": {"query": r.get("query")},
-                                "response": _summarize_query_result(r)
-                            })
-                    else:
-                        # Backwards-compatible single-result shape
-                        exec_record["tool_calls"].append({
-                            "function": result.get("tool_name", function_name),
-                            "request": {"query": query},
-                            "response": _summarize_query_result(result)
-                        })
-                    agent_exec_records.append(exec_record)
-
-                    step_metadata["success"] = True
-                    step_metadata["result_summary"] = f"Executed {function_name} successfully"
-
-                except Exception as e:
-                    logger.error(
-                        "Agent execution failed",
-                        step=step_order,
-                        function_name=function_name,
-                        error=str(e)
-                    )
-                    step_metadata["success"] = False
-                    step_metadata["error"] = str(e)
-
-                    # Add error record but continue
-                    error_record = {
-                        "agent_name": function_name,
-                        "tool_calls": [{
-                            "function": function_name,
-                            "request": {"query": query},
-                            "response": {"success": False, "error": str(e)}
-                        }]
-                    }
-                    agent_exec_records.append(error_record)
-
-                execution_metadata["execution_steps"].append(step_metadata)
-
-            # Build agent summary markdown for planner injection (MVP pattern)
-            injected_md = _build_agent_summary_markdown(agent_exec_records)
-
-            # Re-call planner with injected agent results for final response
-            try:
-                final_response = await planner_service.generate_final_response(
-                    user_request=user_message,
-                    agent_summary=injected_md,
-                    rbac_context=user_context
-                )
-                assistant_response = final_response.get("assistant_message", "")
-            except Exception as e:
-                logger.error("Final response generation failed", error=str(e))
-                assistant_response = await _combine_sequential_results_mvp(agent_exec_records, user_message)
-
-            sources = []
-            plan_type = f"agentic_{len(agent_exec_records)}_agents"
+        sources = []
 
     except Exception as e:
         logger.error("Chat processing failed", error=str(e), session_id=session_id)
@@ -468,9 +348,13 @@ async def _execute_sql_agent(query: str, resolved_account_names, rbac_context):
         except Exception:
             args = {}
 
-        # Execute SQL service
+        # Execute SQL service (execute_query) or if dev mode on _get_dummy_sql_data
         base_query = args.get("query") or query
-        sql_result = await sql_service.execute_query(base_query, rbac_context)
+
+        if app_state.dev_mode:
+            sql_result = await sql_service._get_dummy_sql_data(base_query)
+        else:
+            sql_result = await sql_service.execute_query(base_query, rbac_context)
 
         results.append({
             "tool_name": function_info.get("name", "sql_agent_function"),
