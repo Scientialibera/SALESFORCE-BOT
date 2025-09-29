@@ -10,9 +10,7 @@ def test_server():
     url = "http://localhost:8000/api/v1/chat"
     headers = {"Content-Type": "application/json"}
     data = {
-        "messages": [
-            {"role": "user", "content": "Accounts that have SOWs similar to Microsoft's AI Chatbot engagements (i think the offer name is ai_chatbot) and then a way to contact the related account contacts"}
-        ],
+        "messages": [],
         "user_id": "test-user",
         "session_id": "test-session-sql"
     }

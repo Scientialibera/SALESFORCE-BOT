@@ -84,6 +84,7 @@ class UnifiedDataService:
             turn_number=(chat.total_turns or 0) + 1,
             planning_time_ms=execution_metadata.get("planning_time_ms") if execution_metadata else None,
             total_time_ms=execution_metadata.get("total_time_ms") if execution_metadata else None,
+            execution_metadata=execution_metadata,
         )
 
         # append and persist
@@ -121,7 +122,7 @@ class UnifiedDataService:
         return chat.turns[-max_turns:] if chat.turns else []
 
     async def get_user_chat_sessions(self, user_id: str, limit: int = 50, offset: int = 0):
-        query = "SELECT * FROM c WHERE c.user_id = @user_id AND c.doc_type = 'chat_session' ORDER BY c.updated_at DESC OFFSET @offset LIMIT @limit"
+        query = "SELECT * FROM c WHERE c.user_id = @user_id AND c.doc_type = 'chat_session' ORDER BY c.created_at DESC OFFSET @offset LIMIT @limit"
         parameters = [
             {"name": "@user_id", "value": user_id},
             {"name": "@offset", "value": offset},

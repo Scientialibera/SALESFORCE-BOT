@@ -104,25 +104,45 @@ async def send_message(
     # If no messages provided but a session_id is present, return chat history
     if not request_data.messages or len(request_data.messages) == 0:
         if request_data.session_id:
-            chat_ctx = await unified_service.get_chat_context(request_data.session_id, user_context, max_turns=50)
-            turns = getattr(chat_ctx, "turns", [])
-            choices = []
+            turns = await unified_service.get_chat_context(request_data.session_id, user_context, max_turns=50)
+
+            # Build full conversation history with all metadata
+            conversation_turns = []
             for t in turns:
-                choices.append({
-                    "index": len(choices),
-                    "message": {
-                        "role": t.assistant_message.role.value if t.assistant_message else "assistant",
-                        "content": t.assistant_message.content if t.assistant_message else ""
+                turn_data = {
+                    "turn_id": t.id,
+                    "turn_number": t.turn_number,
+                    "user_message": {
+                        "id": t.user_message.id,
+                        "role": t.user_message.role.value,
+                        "content": t.user_message.content,
+                        "timestamp": t.user_message.timestamp.isoformat() if t.user_message.timestamp else None,
+                        "citations": [c.model_dump() for c in t.user_message.citations] if t.user_message.citations else [],
                     },
-                    "finish_reason": "history"
-                })
+                    "assistant_message": {
+                        "id": t.assistant_message.id if t.assistant_message else None,
+                        "role": t.assistant_message.role.value if t.assistant_message else "assistant",
+                        "content": t.assistant_message.content if t.assistant_message else "",
+                        "timestamp": t.assistant_message.timestamp.isoformat() if t.assistant_message and t.assistant_message.timestamp else None,
+                        "citations": [c.model_dump() for c in t.assistant_message.citations] if t.assistant_message and t.assistant_message.citations else [],
+                    } if t.assistant_message else None,
+                    "planning_time_ms": t.planning_time_ms,
+                    "total_time_ms": t.total_time_ms,
+                    "execution_metadata": t.execution_metadata if hasattr(t, 'execution_metadata') else None,
+                }
+                conversation_turns.append(turn_data)
+
             return ChatResponse(
                 session_id=request_data.session_id,
                 turn_id="",
-                choices=choices,
+                choices=[{"index": 0, "message": {"role": "assistant", "content": "History retrieved"}, "finish_reason": "history"}],
                 usage={},
                 sources=[],
-                metadata={"history": True}
+                metadata={
+                    "history": True,
+                    "turns": conversation_turns,
+                    "total_turns": len(conversation_turns)
+                }
             )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No user message provided and no session_id to fetch history")
 
@@ -166,8 +186,7 @@ async def send_message(
         conversation_context = None
         if session_id:
             try:
-                chat_ctx = await unified_service.get_chat_context(session_id, user_context, max_turns=3)
-                turns = getattr(chat_ctx, "turns", [])
+                turns = await unified_service.get_chat_context(session_id, user_context, max_turns=3)
                 if turns:
                     conversation_context = []
                     for turn in turns[-3:]:  # Last 3 turns for context
@@ -646,12 +665,34 @@ async def _persist_conversation_turn(
 
             assistant_msg.add_citation(citation)
 
-        await unified_service.add_conversation_turn(
-            chat_id=session_id,
-            user_message=user_msg,
-            assistant_message=assistant_msg,
-            rbac_context=user_context,
-            execution_metadata=execution_metadata,
-        )
+        # Try to add turn to existing session, create session if it doesn't exist
+        try:
+            await unified_service.add_conversation_turn(
+                chat_id=session_id,
+                user_message=user_msg,
+                assistant_message=assistant_msg,
+                rbac_context=user_context,
+                execution_metadata=execution_metadata,
+            )
+        except ValueError as e:
+            if "Chat session not found" in str(e):
+                # Create the chat session first, then add the turn
+                logger.info("Creating new chat session", session_id=session_id, user_id=user_context.user_id)
+                await unified_service.create_chat_session(
+                    rbac_context=user_context,
+                    chat_id=session_id,
+                    title=None,
+                    metadata={}
+                )
+                # Now add the turn
+                await unified_service.add_conversation_turn(
+                    chat_id=session_id,
+                    user_message=user_msg,
+                    assistant_message=assistant_msg,
+                    rbac_context=user_context,
+                    execution_metadata=execution_metadata,
+                )
+            else:
+                raise
     except Exception as e:
         logger.warning("Failed to persist conversation turn", error=str(e))

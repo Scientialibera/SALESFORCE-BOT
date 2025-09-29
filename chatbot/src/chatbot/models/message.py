@@ -102,16 +102,22 @@ class Message(BaseModel):
 
 class ConversationTurn(BaseModel):
     """A conversation turn with user message and assistant response."""
-    
+
     id: str = Field(..., description="Turn ID")
     user_message: Message = Field(..., description="User message")
     assistant_message: Optional[Message] = Field(default=None, description="Assistant response")
-    
+
     # Turn metadata
     turn_number: int = Field(..., description="Turn number in conversation")
     planning_time_ms: Optional[int] = Field(default=None, description="Planning time in milliseconds")
     total_time_ms: Optional[int] = Field(default=None, description="Total turn time in milliseconds")
-    
+
+    # Execution lineage - stores all agent calls, tool calls, and intermediate results
+    execution_metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Complete execution metadata including rounds, agent calls, tool calls, and results"
+    )
+
     @property
     def is_complete(self) -> bool:
         """Check if turn is complete (has assistant response)."""
