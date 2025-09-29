@@ -315,18 +315,22 @@ class SQLService:
     def _get_dummy_sql_data(self, query: str) -> QueryResult:
         """
         Generate dummy SQL data for development mode.
-        
-        Args:
-            query: The SQL query being executed
-            
-        Returns:
-            Query result with dummy data
+        Supports returning a unified result when the query mentions multiple tables
+        (e.g., both 'accounts' and 'contacts'): rows are unioned into a single
+        DataTable with a 'table' column indicating the source.
         """
         query_lower = (query or "").lower()
 
-        # Select dummy rows based on simple keywords
-        if "sales" in query_lower or "opportunity" in query_lower or "account" in query_lower:
-            rows = [
+        # Match tokens (avoid overly broad matches like plain 'account' for opps)
+        match_opps = any(tok in query_lower for tok in (" sales", "sales ", " opportunity", " opportunities", " opp ", " pipeline"))
+        match_accounts = "accounts" in query_lower
+        match_contacts = "contacts" in query_lower
+
+        # Collect tables independently (no elif) so multiple can be returned
+        selected_tables: List[Tuple[str, List[Dict[str, Any]]]] = []
+
+        if match_opps:
+            opp_rows = [
                 {
                     "id": "opp_001",
                     "name": "Salesforce CRM Upgrade",
@@ -334,7 +338,7 @@ class SQLService:
                     "stage": "Closed Won",
                     "close_date": "2024-03-15",
                     "account_name": "Salesforce Inc",
-                    "account_id": "acc_salesforce"
+                    "account_id": "acc_salesforce",
                 },
                 {
                     "id": "opp_002",
@@ -343,7 +347,7 @@ class SQLService:
                     "stage": "Proposal",
                     "close_date": "2024-11-30",
                     "account_name": "Microsoft Corporation",
-                    "account_id": "acc_microsoft"
+                    "account_id": "acc_microsoft",
                 },
                 {
                     "id": "opp_003",
@@ -352,40 +356,123 @@ class SQLService:
                     "stage": "Negotiation",
                     "close_date": "2024-12-15",
                     "account_name": "Oracle Corporation",
-                    "account_id": "acc_oracle"
-                }
+                    "account_id": "acc_oracle",
+                },
             ]
-        elif "accounts" in query_lower:
-            rows = [
+            selected_tables.append(("opportunities", opp_rows))
+
+        if match_accounts:
+            acct_rows = [
                 {"id": "acc_salesforce", "name": "Salesforce Inc", "owner_email": "owner@salesforce.com", "created_at": "2023-01-15", "updated_at": "2024-09-21"},
                 {"id": "acc_microsoft", "name": "Microsoft Corporation", "owner_email": "owner@microsoft.com", "created_at": "2023-02-20", "updated_at": "2024-09-21"},
                 {"id": "acc_oracle", "name": "Oracle Corporation", "owner_email": "owner@oracle.com", "created_at": "2023-03-10", "updated_at": "2024-09-21"},
+                {"id": "acc_google", "name": "Google LLC", "owner_email": "owner@google.com", "created_at": "2023-04-05", "updated_at": "2024-09-21"},
             ]
-        elif "contacts" in query_lower:
-            rows = [
+            selected_tables.append(("accounts", acct_rows))
+
+        if match_contacts:
+            # Base contact rows (one per account). To make dev-mode more useful for
+            # multi-account queries we expand this into multiple contacts per
+            # account so queries that request contacts return richer results.
+            base_contact_rows = [
                 {"id": "contact_001", "first_name": "John", "last_name": "Smith", "email": "john.smith@salesforce.com", "account_id": "acc_salesforce"},
                 {"id": "contact_002", "first_name": "Jane", "last_name": "Doe", "email": "jane.doe@microsoft.com", "account_id": "acc_microsoft"},
                 {"id": "contact_003", "first_name": "Bob", "last_name": "Johnson", "email": "bob.johnson@oracle.com", "account_id": "acc_oracle"},
+                {"id": "contact_004", "first_name": "Alice", "last_name": "Williams", "email": "alice.williams@google.com", "account_id": "acc_google"},
             ]
-        else:
-            rows = []
 
-        # Build DataTable
-        if rows:
-            columns = list(rows[0].keys())
-            table_columns = [
-                DataColumn(name=c, data_type=("number" if isinstance(rows[0][c], (int, float)) else "string"))
-                for c in columns
-            ]
-        else:
-            columns = []
-            table_columns = []
+            # Return the base contact rows directly — simpler and predictable for
+            # dev-mode: any query that mentions 'contacts' will receive the full
+            # base set of sample contact rows.
+            contact_rows = base_contact_rows
+            selected_tables.append(("contacts", contact_rows))
+
+        # If nothing matched, return empty
+        if not selected_tables:
+            data_table = DataTable(
+                name="query_result",
+                columns=[],
+                rows=[],
+                row_count=0,
+                source="sql",
+                query=query,
+            )
+            return QueryResult(
+                success=True,
+                data=data_table,
+                error=None,
+                query=query,
+                execution_time_ms=50,
+                row_count=0,
+            )
+
+        # If only one table matched, return it directly (backward compatible)
+        if len(selected_tables) == 1:
+            table_name, rows = selected_tables[0]
+            if rows:
+                columns = list(rows[0].keys())
+                table_columns = [
+                    DataColumn(name=c, data_type=("number" if isinstance(rows[0][c], (int, float)) else "string"))
+                    for c in columns
+                ]
+            else:
+                table_columns = []
+            data_table = DataTable(
+                name=table_name,
+                columns=table_columns,
+                rows=rows,
+                row_count=len(rows),
+                source="sql",
+                query=query,
+            )
+            return QueryResult(
+                success=True,
+                data=data_table,
+                error=None,
+                query=query,
+                execution_time_ms=50,
+                row_count=len(rows),
+            )
+
+        # Multiple tables matched: build a unified DataTable (adds 'table' column)
+        # Compute the union of all column names across selected tables
+        union_cols: List[str] = []
+        col_set = set()
+        for _, rows in selected_tables:
+            if rows:
+                for c in rows[0].keys():
+                    if c not in col_set:
+                        col_set.add(c)
+                        union_cols.append(c)
+        # Ensure a 'table' discriminator column is present
+        if "table" not in col_set:
+            union_cols.insert(0, "table")
+            col_set.add("table")
+
+        # Build unified rows, padding missing columns with None
+        unified_rows: List[Dict[str, Any]] = []
+        for table_name, rows in selected_tables:
+            for r in rows:
+                unified = {c: None for c in union_cols}
+                unified.update(r)
+                unified["table"] = table_name
+                unified_rows.append(unified)
+
+        # Infer column types from first non-None sample in unified rows
+        def _infer_type(col: str) -> str:
+            for r in unified_rows:
+                v = r.get(col)
+                if v is not None:
+                    return "number" if isinstance(v, (int, float)) else "string"
+            return "string"
+
+        table_columns = [DataColumn(name=c, data_type=_infer_type(c)) for c in union_cols]
 
         data_table = DataTable(
             name="query_result",
             columns=table_columns,
-            rows=rows,
-            row_count=len(rows),
+            rows=unified_rows,
+            row_count=len(unified_rows),
             source="sql",
             query=query,
         )
@@ -396,5 +483,6 @@ class SQLService:
             error=None,
             query=query,
             execution_time_ms=50,
-            row_count=len(rows),
+            row_count=len(unified_rows),
         )
+

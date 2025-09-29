@@ -423,11 +423,15 @@ class DataInitializer:
                 return
 
         try:
-            # Clear existing data in dev mode
-            if settings.dev_mode:
-                print("  🧹 Clearing existing graph data...")
-                await self.gremlin_client.execute_query("g.V().drop()")
+            # Optionally clear existing graph data. By default we clear so
+            # the graph contains only the nodes/edges created by this initializer.
+            # Set the environment variable INIT_DATA_CLEAR_GRAPH to 'false' to
+            # preserve existing data.
+            init_clear = os.environ.get('INIT_DATA_CLEAR_GRAPH', 'true').lower() in ('1', 'true', 'yes')
+            if init_clear:
+                print("  🧹 Clearing existing graph data (INIT_DATA_CLEAR_GRAPH=true)...")
                 await self.gremlin_client.execute_query("g.E().drop()")
+                await self.gremlin_client.execute_query("g.V().drop()")
 
             # Add account vertices with sales-relevant properties
             accounts = [
@@ -523,37 +527,112 @@ class DataInitializer:
                 await self.gremlin_client.execute_query(query)
                 print(f"  ✓ Added account: {account['name']} ({account['status']})")
             
-            # Add relationships relevant for sales planning
-            relationships = [
-                # Current customer relationships
-                {"from": "acc_salesforce", "to": "acc_microsoft", "type": "integrates_with", "strength": 0.9, "description": "Salesforce integrates with Microsoft 365"},
-                {"from": "acc_salesforce", "to": "acc_aws", "type": "hosted_on", "strength": 0.8, "description": "Salesforce CRM hosted on AWS"},
-                {"from": "acc_oracle", "to": "acc_aws", "type": "migrating_to", "strength": 0.7, "description": "Oracle considering AWS migration"},
-                
-                # Competitive relationships
-                {"from": "acc_microsoft", "to": "acc_google", "type": "competes_with", "strength": 0.8, "description": "Direct competition in cloud services"},
-                {"from": "acc_aws", "to": "acc_google", "type": "competes_with", "strength": 0.9, "description": "Direct competition in cloud infrastructure"},
-                {"from": "acc_microsoft", "to": "acc_aws", "type": "competes_with", "strength": 0.7, "description": "Competition in enterprise cloud"},
-                
-                # Partnership opportunities
-                {"from": "acc_salesforce", "to": "acc_sap", "type": "potential_partnership", "strength": 0.6, "description": "SAP-Salesforce integration opportunity"},
-                {"from": "acc_oracle", "to": "acc_sap", "type": "competes_with", "strength": 0.8, "description": "Direct competition in ERP space"},
-                
-                # Cross-sell opportunities
-                {"from": "acc_salesforce", "to": "acc_oracle", "type": "potential_integration", "strength": 0.5, "description": "Salesforce + Oracle database integration"},
-                {"from": "acc_microsoft", "to": "acc_sap", "type": "integrates_with", "strength": 0.7, "description": "Microsoft-SAP partnership"}
+            # Add account-account relationships only if explicitly enabled.
+            # To skip adding these legacy/extra relationships set
+            # INIT_DATA_KEEP_ACCOUNT_RELATIONSHIPS=false (default).
+            keep_rels = os.environ.get('INIT_DATA_KEEP_ACCOUNT_RELATIONSHIPS', 'false').lower() in ('1', 'true', 'yes')
+            if keep_rels:
+                relationships = [
+                    # Current customer relationships
+                    {"from": "acc_salesforce", "to": "acc_microsoft", "type": "integrates_with", "strength": 0.9, "description": "Salesforce integrates with Microsoft 365"},
+                    {"from": "acc_salesforce", "to": "acc_aws", "type": "hosted_on", "strength": 0.8, "description": "Salesforce CRM hosted on AWS"},
+                    {"from": "acc_oracle", "to": "acc_aws", "type": "migrating_to", "strength": 0.7, "description": "Oracle considering AWS migration"},
+                    
+                    # Competitive relationships
+                    {"from": "acc_microsoft", "to": "acc_google", "type": "competes_with", "strength": 0.8, "description": "Direct competition in cloud services"},
+                    {"from": "acc_aws", "to": "acc_google", "type": "competes_with", "strength": 0.9, "description": "Direct competition in cloud infrastructure"},
+                    {"from": "acc_microsoft", "to": "acc_aws", "type": "competes_with", "strength": 0.7, "description": "Competition in enterprise cloud"},
+                    
+                    # Partnership opportunities
+                    {"from": "acc_salesforce", "to": "acc_sap", "type": "potential_partnership", "strength": 0.6, "description": "SAP-Salesforce integration opportunity"},
+                    {"from": "acc_oracle", "to": "acc_sap", "type": "competes_with", "strength": 0.8, "description": "Direct competition in ERP space"},
+                    
+                    # Cross-sell opportunities
+                    {"from": "acc_salesforce", "to": "acc_oracle", "type": "potential_integration", "strength": 0.5, "description": "Salesforce + Oracle database integration"},
+                    {"from": "acc_microsoft", "to": "acc_sap", "type": "integrates_with", "strength": 0.7, "description": "Microsoft-SAP partnership"}
+                ]
+
+                for rel in relationships:
+                    query = f"""
+                    g.V('{rel["from"]}')
+                     .addE('{rel["type"]}')
+                     .to(g.V('{rel["to"]}'))
+                     .property('strength', {rel["strength"]})
+                     .property('description', '{rel["description"]}')
+                    """
+                    await self.gremlin_client.execute_query(query)
+                    print(f"  ✓ Added relationship: {rel['from']} -{rel['type']}-> {rel['to']} ({rel['description']})")
+
+            # --- New: Add Statements of Work (SOW) connected to accounts ---
+            # We intentionally do NOT create 'offering' vertices by default so the
+            # graph contains only 'account' and 'sow' vertices and their edges.
+            print("  ➤ Adding sample Statements of Work (SOWs)...")
+
+            # Sample SOWs (work done for accounts). Each SOW stores its offering
+            # as a property rather than a separate vertex to keep the graph
+            # limited to accounts and sows.
+            sows = [
+                # --- AI Chatbots (now across multiple accounts) ---
+                {"id": "sow_msft_ai_chatbot_2023",      "account": "acc_microsoft",  "title": "Microsoft AI Chatbot PoC",              "offering": "ai_chatbot",        "year": 2023, "value": "250000"},
+                {"id": "sow_salesforce_ai_chatbot_2023","account": "acc_salesforce",  "title": "Salesforce Service Chatbot Rollout",    "offering": "ai_chatbot",        "year": 2023, "value": "300000"},
+                {"id": "sow_google_ai_chatbot_2024",    "account": "acc_google",      "title": "Google Customer Support Chatbot",       "offering": "ai_chatbot",        "year": 2024, "value": "410000"},
+                {"id": "sow_aws_ai_chatbot_2022",       "account": "acc_aws",         "title": "AWS Internal Helpdesk Bot",             "offering": "ai_chatbot",        "year": 2022, "value": "150000"},
+                {"id": "sow_sap_ai_chatbot_2023",       "account": "acc_sap",         "title": "SAP Field Service Chatbot",             "offering": "ai_chatbot",        "year": 2023, "value": "210000"},
+
+                # --- Existing non-chatbot samples you already had ---
+                {"id": "sow_msft_fabric_2024",          "account": "acc_microsoft",   "title": "Microsoft Fabric Deployment",           "offering": "fabric_deployment", "year": 2024, "value": "560000"},
+                {"id": "sow_salesforce_dynamics_2022",  "account": "acc_salesforce",   "title": "Salesforce Dynamics Integration",       "offering": "dynamics",          "year": 2022, "value": "180000"},
+                {"id": "sow_oracle_migration_2024",     "account": "acc_oracle",       "title": "Oracle Data Migration",                 "offering": "data_migration",    "year": 2024, "value": "320000"},
+                {"id": "sow_sap_fabric_2023",           "account": "acc_sap",          "title": "SAP Fabric Proof of Value",             "offering": "fabric_deployment", "year": 2023, "value": "120000"},
             ]
-            
-            for rel in relationships:
-                query = f"""
-                g.V('{rel["from"]}')
-                 .addE('{rel["type"]}')
-                 .to(g.V('{rel["to"]}'))
-                 .property('strength', {rel["strength"]})
-                 .property('description', '{rel["description"]}')
+
+            for sow in sows:
+                q = f"""
+                g.addV('sow')
+                 .property('id', '{sow['id']}')
+                 .property('partitionKey', '{sow['id']}')
+                 .property('title', "{sow['title']}")
+                 .property('offering', '{sow['offering']}')
+                 .property('year', {sow['year']})
+                 .property('value', '{sow['value']}')
                 """
-                await self.gremlin_client.execute_query(query)
-                print(f"  ✓ Added relationship: {rel['from']} -{rel['type']}-> {rel['to']} ({rel['description']})")
+                await self.gremlin_client.execute_query(q)
+                # Link account -> sow
+                link_q = f"""
+                g.V('{sow['account']}')
+                 .addE('has_sow')
+                 .to(g.V('{sow['id']}'))
+                 .property('role', 'contract')
+                """
+                await self.gremlin_client.execute_query(link_q)
+                print(f"    ✓ Added SOW: {sow['id']} (account={sow['account']}, offering={sow['offering']})")
+
+            # Similarity / related work edges between SOWs to help find similar engagements
+            # e.g., MSFT AI Chatbot SOW is similar to Salesforce Dynamics integration (if both are conversational projects)
+            sow_similarities = [
+                # --- AI chatbot clusters (more edges = more matches) ---
+                {"a": "sow_msft_ai_chatbot_2023",       "b": "sow_salesforce_ai_chatbot_2023", "score": 0.85, "note": "enterprise support chatbots"},
+                {"a": "sow_msft_ai_chatbot_2023",       "b": "sow_google_ai_chatbot_2024",     "score": 0.80, "note": "customer service chatbots"},
+                {"a": "sow_salesforce_ai_chatbot_2023", "b": "sow_aws_ai_chatbot_2022",        "score": 0.70, "note": "IT/helpdesk assistant use cases"},
+                {"a": "sow_google_ai_chatbot_2024",     "b": "sow_sap_ai_chatbot_2023",        "score": 0.65, "note": "multilingual bot UX"},
+                {"a": "sow_aws_ai_chatbot_2022",        "b": "sow_sap_ai_chatbot_2023",        "score": 0.60, "note": "FAQ intent modeling overlap"},
+
+                # --- Keep/extend your original non-chatbot links ---
+                {"a": "sow_msft_ai_chatbot_2023",       "b": "sow_salesforce_dynamics_2022",   "score": 0.60, "note": "both involve conversational integration"},
+                {"a": "sow_msft_fabric_2024",           "b": "sow_sap_fabric_2023",            "score": 0.80, "note": "both are Fabric deployments"},
+                {"a": "sow_oracle_migration_2024",      "b": "sow_salesforce_dynamics_2022",   "score": 0.40, "note": "data migration aspects overlap"},
+            ]
+
+            for sim in sow_similarities:
+                q = f"""
+                g.V('{sim['a']}')
+                 .addE('similar_to')
+                 .to(g.V('{sim['b']}'))
+                 .property('score', {sim['score']})
+                 .property('note', "{sim['note']}")
+                """
+                await self.gremlin_client.execute_query(q)
+                print(f"    ✓ Linked similar SOWs: {sim['a']} ~ {sim['b']} (score={sim['score']})")
             
             print("  ✅ Graph data upload completed")
 

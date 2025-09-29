@@ -6,7 +6,7 @@
     "properties": {
       "query": {
         "type": "string",
-        "description": "User's natural language query about relationships, connections, or account information"
+        "description": "User's natural language query about relationships, connections, or account information and all the context the agent needs to answer it. Do not write graph query or any other code, just provide a detailed description of what the user is looking for. Include any relevant details such as account names, timeframes, metrics, or specific data points mentioned by the user."
       },
       
       "accounts_mentioned": {

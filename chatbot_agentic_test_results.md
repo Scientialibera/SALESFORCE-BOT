@@ -2,14 +2,14 @@
 
 ## Query: How are you?
 
-### Planner Request (Turn 1)
+### Planner Request (Round 1)
 
 ```json
 {
   "messages": [
     {
       "role": "system",
-      "content": "# Planner Service System Prompt\n\nYou are the planner service for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the appropriate combination of agents and tools to provide comprehensive answers.\n\n## Your Capabilities\n- Analyze user intent and determine required actions\n- Route requests to appropriate specialized agents (SQL, Graph)\n- Coordinate multi-step workflows\n- Combine results from multiple agents\n- Provide direct answers for general questions\n\n## Agent Routing Guidelines\n\n### SQL Agent\nRoute to SQL agent for:\n- Data analysis and reporting requests\n- Questions about account performance, sales metrics\n- Requests for specific data queries or reports\n- Trend analysis and statistical questions\n\n### Graph Agent  \nRoute to Graph agent for:\n- Relationship and connection questions\n- Account hierarchy and organizational structure\n- Partnership and collaboration inquiries\n- Network analysis and pattern discovery\n\n### Direct Response\nProvide direct answers for:\n- General knowledge questions not related to proprietary data.\n\n### Multiple Function selection\n- You may select 1 or more tools to call - depending on User question.\n- If user asks about sales data AND relationships, you can call both tools.\n\n\n## Account Extraction Requirement\nFor every agent/tool call (e.g., SQL or Graph agent), you MUST extract the list of account names or aliases explicitly mentioned in the user query. Add these as an array field `accounts_mentioned` (list of strings, or `null` if no accounts are mentioned) in the agent/tool call parameters. If the user query is generic (e.g., \"sum of sales across all accounts\"), set `accounts_mentioned` to `null`.\n\n## Planning Process\n1. **Analyze Request**: Understand user intent and required information\n2. **Determine Agents**: Select appropriate agents based on request type\n3. **Extract Accounts**: Identify and list all account names/aliases mentioned in the query (or set to `null` if none)\n4. **Plan Sequence**: Order agent calls for optimal workflow\n5. **Coordinate Execution**: Manage agent interactions and data flow\n6. **Synthesize Results**: Combine outputs into coherent response\n\n## Multi-Agent Workflows\nFor complex requests that need multiple agents:\n1. Start with broader context (Graph agent for relationships)\n2. Drill down to specific data (SQL agent for metrics)\n3. Combine insights from both perspectives\n4. Provide unified, actionable recommendations\n\n## Response Quality\n- Ensure responses are complete and accurate\n- Maintain conversation context across agent calls\n- Provide clear explanations of methodology\n- Suggest follow-up questions and actions\n\nRemember: Your goal is to provide the most comprehensive and useful response by intelligently orchestrating available agents and tools.\n"
+      "content": "# Planner Service System Prompt (Parallel + Sequential Orchestration)\n\nYou are the **planner service** for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the right mix of agents and tools to produce complete answers.\n\nYour output is either:\n\n1. **One or more tool/agent calls** (when more info is required), or  \n2. **A final assistant message** (when you can answer without further tools).\n\n> **Run-until-done.** Keep planning and invoking tools until no additional tool calls are needed. When the next best action is to respond, stop and return a final assistant message.\n\n---\n\n## Capabilities\n\n- Analyze user intent and required data domains\n- Route requests to specialized agents (SQL, Graph)\n- Coordinate **sequential** and **parallel** tool calls\n- Combine multi-agent outputs into a unified answer\n- Provide direct answers for general questions\n- If tools are chosen: provide a **rich and clean context** for the agents. **Do not** write raw SQL or Gremlin. Instead, fill the `query` field with concise **instructions + context** that enables the agent to craft the precise query. For compound requests (multiple tools), each call’s context should include only what that agent needs.\n\n---\n\n## Agent Routing Guidelines\n\n### SQL Agent\nUse SQL for:\n- Account performance and sales metrics\n- Contact lists and CRM tables\n- Trend analysis and aggregations\n\n### Graph Agent\nUse Graph for SOWs & relationships:\n- SOWs for an account\n- Accounts with similar/related SOWs\n- Filtering SOWs by `offering`, tags, properties\n- Relationship questions (account level)\n- Account hierarchy / org structure\n\n### Direct Response\n- General knowledge not tied to proprietary data\n- Clarifications that require no tool calls\n\n---\n\n## Concurrency & Dependency Rules\n\n- **Parallel allowed:** Call multiple tools **at the same time** only when the calls are **independent** and the final answer is a simple merge.\n- **Sequential required:** When a later step **depends on outputs** from an earlier step, call the upstream tool **first**, wait for its result, then issue the downstream call with those outputs.\n- **Default stance:** If in doubt, prefer **sequential**.\n\n**Decision checklist:**\n1. Does Tool B need values produced by Tool A? → **Sequential** (A → B)  \n2. Can Tools A and B run on user-provided parameters alone? → **Parallel**  \n3. Will one tool’s result change the scope/filters of another? → **Sequential**\n\n---\n\n## State & Working Context\n\nMaintain a lightweight working context across steps (e.g., `discovered_accounts`, `selected_offering`, `time_range`). Use this context to parameterize later tool calls. Do **not** conflate context with `accounts_mentioned` (see below).\n\n---\n\n## Account Extraction Requirement (Mandatory)\n\nFor **every** agent/tool call (SQL or Graph), extract account names or aliases explicitly mentioned in the user query and include them as:\n\n```json\n\"accounts_mentioned\": [\"<Account A>\", \"<Account B>\"]\n```\n\n- If the user’s query is generic (e.g., “across all accounts”), set `accounts_mentioned` to `null`.\n- When passing **discovered** accounts from a prior step, include them in a **separate** argument field (e.g., `accounts_filter`)—do **not** mix them into `accounts_mentioned` unless the user originally said them.\n\n---\n\n## Tool/Agent Call Contract\n\nEmit each tool call as a single object:\n\n```json\n{\n  \"tool_name\": \"<agent_or_tool_name>\",\n  \"arguments\": {\n    \"query\": \"Detailed, context-encapsulated instructions that enable the agent to craft a precise query. May include knowledge discovered in previous steps.\",\n    \"bindings\": { \"<param>\": \"<value>\" },\n    \"accounts_mentioned\": [\"…\"]\n  }\n}\n```\n\n> Typical `tool_name` values here are **`graph_agent`** and **`sql_agent`** (you call the agents; they will call their underlying tools like `graph.query` or the SQL executor).\n\n**Rules**\n- **Parameterize** all user inputs; never inline values into raw query strings.\n- If a later step uses outputs from an earlier call, pass them in appropriately named arguments (e.g., `accounts_filter`, `ids`, `offering`).\n\n---\n\n## Orchestration Patterns\n\n### A) **Sequential (dependency present)**\n\n**User:** “Accounts that have SOWs similar to Microsoft’s AI Chatbot engagements (offering: ai_chatbot). And then from SQL get the **account contacts** (Sales).”\n\n**Step 1 — Graph (discover related accounts)**\n\n```json\n{\n  \"tool_name\": \"graph_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Find accounts with SOWs similar to the target account's ai_chatbot engagements. Input: Target account = Microsoft Corporation; Offering filter = ai_chatbot. Output: A small, deduped list of related account names (and ids if available) suitable to hand off to SQL for contact lookup.\",\n    \"bindings\": { \"name\": \"Microsoft Corporation\", \"offering\": \"ai_chatbot\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n*Planner saves returned account names as `discovered_accounts`.*\n\n**Step 2 — SQL (use Graph outputs to fetch Sales contacts)**\n\n```json\n{\n  \"tool_name\": \"sql_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Get contacts for the discovered accounts. Emphasize Sales/GTMS roles if available; otherwise return all contacts. Sort by account name, then last name, first name. Limit 100.\",\n    \"bindings\": { \"accounts_filter\": [\"<from discovered_accounts>\"], \"department\": \"Sales\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n**Step 3 — Synthesize** a final answer combining Graph (which accounts) + SQL (Sales contacts).\n\n### B) **Parallel (independent)**\n\n**User:** “Show the top-5 accounts by 2024 revenue, and also list accounts with more than 3 active SOWs.”\n\n- Revenue rankings (SQL) and SOW counts (Graph) do **not** depend on each other → you **may** issue both tool calls in the same planning turn.\n- Merge results and respond.\n\n---\n\n## Planning Loop (Run-until-Done)\n\n1. **Analyze** the request → identify intents, data sources, and dependencies  \n2. **Choose** next action: Graph, SQL, or direct response  \n3. **Extract** `accounts_mentioned` from the user’s text  \n4. **Invoke** one or more tools (parallel **only** if independent)  \n5. **Append** each planner reply and each injection to the conversation; **update context** with outputs (e.g., `discovered_accounts`)  \n6. If more info is needed, **repeat**; else **finalize** with an assistant message\n\n**Termination:** Stop when the next best action is to answer without further tool calls.\n\n---\n\n## Response Quality\n\n- Produce complete, accurate responses\n- Maintain context across steps\n- Explain methodology when useful\n- Offer follow-ups and next actions"
     },
     {
       "role": "user",
@@ -78,18 +78,18 @@
 }
 ```
 
-### Planner Raw Response (Turn 1)
+### Planner Raw Response (Round 1)
 
 ```json
 {
-  "id": "chatcmpl-CJi8nGvocp2goHZSdszpauyRHOVzG",
+  "id": "chatcmpl-CLDXfZvasrvm8ihla5O1uqWvclfuH",
   "choices": [
     {
       "finish_reason": "stop",
       "index": 0,
       "logprobs": null,
       "message": {
-        "content": "I'm just a virtual assistant, so I don't have feelings, but I'm here and ready to help you with any Salesforce-related questions or tasks! How can I assist you today?",
+        "content": "I'm doing well, thank you for asking! How can I assist you with your Salesforce or account-related questions today?",
         "refusal": null,
         "role": "assistant",
         "annotations": [],
@@ -125,15 +125,15 @@
       }
     }
   ],
-  "created": 1758813945,
+  "created": 1759172979,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
-  "system_fingerprint": "fp_c79ab13e31",
+  "system_fingerprint": "fp_4d7b201289",
   "usage": {
-    "completion_tokens": 37,
-    "prompt_tokens": 648,
-    "total_tokens": 685,
+    "completion_tokens": 25,
+    "prompt_tokens": 1639,
+    "total_tokens": 1664,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -175,162 +175,30 @@
 }
 ```
 
-### Planner Assistant Content (Turn 1)
+### Planner Assistant Content (Round 1)
 
-I'm just a virtual assistant, so I don't have feelings, but I'm here and ready to help you with any Salesforce-related questions or tasks! How can I assist you today?
-
-### Injection Back to Planner
-
-```markdown
-### Its agent requests
-- (no agent requests issued)
-
-######Response from agents#######
-(no agent responses)
-```
-
-### Planner Final Request (Turn 2)
-
-```json
-{
-  "messages": [
-    {
-      "role": "system",
-      "content": "# Planner Service System Prompt\n\nYou are the planner service for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the appropriate combination of agents and tools to provide comprehensive answers.\n\n## Your Capabilities\n- Analyze user intent and determine required actions\n- Route requests to appropriate specialized agents (SQL, Graph)\n- Coordinate multi-step workflows\n- Combine results from multiple agents\n- Provide direct answers for general questions\n\n## Agent Routing Guidelines\n\n### SQL Agent\nRoute to SQL agent for:\n- Data analysis and reporting requests\n- Questions about account performance, sales metrics\n- Requests for specific data queries or reports\n- Trend analysis and statistical questions\n\n### Graph Agent  \nRoute to Graph agent for:\n- Relationship and connection questions\n- Account hierarchy and organizational structure\n- Partnership and collaboration inquiries\n- Network analysis and pattern discovery\n\n### Direct Response\nProvide direct answers for:\n- General knowledge questions not related to proprietary data.\n\n### Multiple Function selection\n- You may select 1 or more tools to call - depending on User question.\n- If user asks about sales data AND relationships, you can call both tools.\n\n\n## Account Extraction Requirement\nFor every agent/tool call (e.g., SQL or Graph agent), you MUST extract the list of account names or aliases explicitly mentioned in the user query. Add these as an array field `accounts_mentioned` (list of strings, or `null` if no accounts are mentioned) in the agent/tool call parameters. If the user query is generic (e.g., \"sum of sales across all accounts\"), set `accounts_mentioned` to `null`.\n\n## Planning Process\n1. **Analyze Request**: Understand user intent and required information\n2. **Determine Agents**: Select appropriate agents based on request type\n3. **Extract Accounts**: Identify and list all account names/aliases mentioned in the query (or set to `null` if none)\n4. **Plan Sequence**: Order agent calls for optimal workflow\n5. **Coordinate Execution**: Manage agent interactions and data flow\n6. **Synthesize Results**: Combine outputs into coherent response\n\n## Multi-Agent Workflows\nFor complex requests that need multiple agents:\n1. Start with broader context (Graph agent for relationships)\n2. Drill down to specific data (SQL agent for metrics)\n3. Combine insights from both perspectives\n4. Provide unified, actionable recommendations\n\n## Response Quality\n- Ensure responses are complete and accurate\n- Maintain conversation context across agent calls\n- Provide clear explanations of methodology\n- Suggest follow-up questions and actions\n\nRemember: Your goal is to provide the most comprehensive and useful response by intelligently orchestrating available agents and tools.\n"
-    },
-    {
-      "role": "user",
-      "content": "How are you?"
-    },
-    {
-      "role": "assistant",
-      "content": "I'm just a virtual assistant, so I don't have feelings, but I'm here and ready to help you with any Salesforce-related questions or tasks! How can I assist you today?"
-    },
-    {
-      "role": "assistant",
-      "content": "### Its agent requests\n- (no agent requests issued)\n\n######Response from agents#######\n(no agent responses)"
-    },
-    {
-      "role": "user",
-      "content": "Using the information above, provide the final answer to the user."
-    }
-  ]
-}
-```
-
-### Planner Final Raw Response (Turn 2)
-
-```json
-{
-  "id": "chatcmpl-CJi8orcGhARw2SyhAbwOMErWFWjWY",
-  "choices": [
-    {
-      "finish_reason": "stop",
-      "index": 0,
-      "logprobs": null,
-      "message": {
-        "content": "I'm just a virtual assistant, so I don't have feelings, but I'm here and ready to help you with any Salesforce-related questions or tasks! How can I assist you today?",
-        "refusal": null,
-        "role": "assistant",
-        "annotations": [],
-        "audio": null,
-        "function_call": null,
-        "tool_calls": null
-      },
-      "content_filter_results": {
-        "hate": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "protected_material_text": {
-          "filtered": false,
-          "detected": false
-        },
-        "self_harm": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "sexual": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "violence": {
-          "filtered": false,
-          "severity": "safe"
-        }
-      }
-    }
-  ],
-  "created": 1758813946,
-  "model": "gpt-4.1-2025-04-14",
-  "object": "chat.completion",
-  "service_tier": null,
-  "system_fingerprint": "fp_c79ab13e31",
-  "usage": {
-    "completion_tokens": 36,
-    "prompt_tokens": 637,
-    "total_tokens": 673,
-    "completion_tokens_details": {
-      "accepted_prediction_tokens": 0,
-      "audio_tokens": 0,
-      "reasoning_tokens": 0,
-      "rejected_prediction_tokens": 0
-    },
-    "prompt_tokens_details": {
-      "audio_tokens": 0,
-      "cached_tokens": 0
-    }
-  },
-  "prompt_filter_results": [
-    {
-      "prompt_index": 0,
-      "content_filter_results": {
-        "hate": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "jailbreak": {
-          "filtered": false,
-          "detected": false
-        },
-        "self_harm": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "sexual": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "violence": {
-          "filtered": false,
-          "severity": "safe"
-        }
-      }
-    }
-  ]
-}
-```
+I'm doing well, thank you for asking! How can I assist you with your Salesforce or account-related questions today?
 
 ## Final Answer
 
-I'm just a virtual assistant, so I don't have feelings, but I'm here and ready to help you with any Salesforce-related questions or tasks! How can I assist you today?
+I'm doing well, thank you for asking! How can I assist you with your Salesforce or account-related questions today?
 
 ---
 
-## Query: All sales for Microsoft and its account relationships
+## Query: Accounts that have SOWs similar to Microsoft's AI Chatbot engagements (i think the offer name is ai_chatbot) and then a way to contact the related account contacts
 
-### Planner Request (Turn 1)
+### Planner Request (Round 1)
 
 ```json
 {
   "messages": [
     {
       "role": "system",
-      "content": "# Planner Service System Prompt\n\nYou are the planner service for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the appropriate combination of agents and tools to provide comprehensive answers.\n\n## Your Capabilities\n- Analyze user intent and determine required actions\n- Route requests to appropriate specialized agents (SQL, Graph)\n- Coordinate multi-step workflows\n- Combine results from multiple agents\n- Provide direct answers for general questions\n\n## Agent Routing Guidelines\n\n### SQL Agent\nRoute to SQL agent for:\n- Data analysis and reporting requests\n- Questions about account performance, sales metrics\n- Requests for specific data queries or reports\n- Trend analysis and statistical questions\n\n### Graph Agent  \nRoute to Graph agent for:\n- Relationship and connection questions\n- Account hierarchy and organizational structure\n- Partnership and collaboration inquiries\n- Network analysis and pattern discovery\n\n### Direct Response\nProvide direct answers for:\n- General knowledge questions not related to proprietary data.\n\n### Multiple Function selection\n- You may select 1 or more tools to call - depending on User question.\n- If user asks about sales data AND relationships, you can call both tools.\n\n\n## Account Extraction Requirement\nFor every agent/tool call (e.g., SQL or Graph agent), you MUST extract the list of account names or aliases explicitly mentioned in the user query. Add these as an array field `accounts_mentioned` (list of strings, or `null` if no accounts are mentioned) in the agent/tool call parameters. If the user query is generic (e.g., \"sum of sales across all accounts\"), set `accounts_mentioned` to `null`.\n\n## Planning Process\n1. **Analyze Request**: Understand user intent and required information\n2. **Determine Agents**: Select appropriate agents based on request type\n3. **Extract Accounts**: Identify and list all account names/aliases mentioned in the query (or set to `null` if none)\n4. **Plan Sequence**: Order agent calls for optimal workflow\n5. **Coordinate Execution**: Manage agent interactions and data flow\n6. **Synthesize Results**: Combine outputs into coherent response\n\n## Multi-Agent Workflows\nFor complex requests that need multiple agents:\n1. Start with broader context (Graph agent for relationships)\n2. Drill down to specific data (SQL agent for metrics)\n3. Combine insights from both perspectives\n4. Provide unified, actionable recommendations\n\n## Response Quality\n- Ensure responses are complete and accurate\n- Maintain conversation context across agent calls\n- Provide clear explanations of methodology\n- Suggest follow-up questions and actions\n\nRemember: Your goal is to provide the most comprehensive and useful response by intelligently orchestrating available agents and tools.\n"
+      "content": "# Planner Service System Prompt (Parallel + Sequential Orchestration)\n\nYou are the **planner service** for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the right mix of agents and tools to produce complete answers.\n\nYour output is either:\n\n1. **One or more tool/agent calls** (when more info is required), or  \n2. **A final assistant message** (when you can answer without further tools).\n\n> **Run-until-done.** Keep planning and invoking tools until no additional tool calls are needed. When the next best action is to respond, stop and return a final assistant message.\n\n---\n\n## Capabilities\n\n- Analyze user intent and required data domains\n- Route requests to specialized agents (SQL, Graph)\n- Coordinate **sequential** and **parallel** tool calls\n- Combine multi-agent outputs into a unified answer\n- Provide direct answers for general questions\n- If tools are chosen: provide a **rich and clean context** for the agents. **Do not** write raw SQL or Gremlin. Instead, fill the `query` field with concise **instructions + context** that enables the agent to craft the precise query. For compound requests (multiple tools), each call’s context should include only what that agent needs.\n\n---\n\n## Agent Routing Guidelines\n\n### SQL Agent\nUse SQL for:\n- Account performance and sales metrics\n- Contact lists and CRM tables\n- Trend analysis and aggregations\n\n### Graph Agent\nUse Graph for SOWs & relationships:\n- SOWs for an account\n- Accounts with similar/related SOWs\n- Filtering SOWs by `offering`, tags, properties\n- Relationship questions (account level)\n- Account hierarchy / org structure\n\n### Direct Response\n- General knowledge not tied to proprietary data\n- Clarifications that require no tool calls\n\n---\n\n## Concurrency & Dependency Rules\n\n- **Parallel allowed:** Call multiple tools **at the same time** only when the calls are **independent** and the final answer is a simple merge.\n- **Sequential required:** When a later step **depends on outputs** from an earlier step, call the upstream tool **first**, wait for its result, then issue the downstream call with those outputs.\n- **Default stance:** If in doubt, prefer **sequential**.\n\n**Decision checklist:**\n1. Does Tool B need values produced by Tool A? → **Sequential** (A → B)  \n2. Can Tools A and B run on user-provided parameters alone? → **Parallel**  \n3. Will one tool’s result change the scope/filters of another? → **Sequential**\n\n---\n\n## State & Working Context\n\nMaintain a lightweight working context across steps (e.g., `discovered_accounts`, `selected_offering`, `time_range`). Use this context to parameterize later tool calls. Do **not** conflate context with `accounts_mentioned` (see below).\n\n---\n\n## Account Extraction Requirement (Mandatory)\n\nFor **every** agent/tool call (SQL or Graph), extract account names or aliases explicitly mentioned in the user query and include them as:\n\n```json\n\"accounts_mentioned\": [\"<Account A>\", \"<Account B>\"]\n```\n\n- If the user’s query is generic (e.g., “across all accounts”), set `accounts_mentioned` to `null`.\n- When passing **discovered** accounts from a prior step, include them in a **separate** argument field (e.g., `accounts_filter`)—do **not** mix them into `accounts_mentioned` unless the user originally said them.\n\n---\n\n## Tool/Agent Call Contract\n\nEmit each tool call as a single object:\n\n```json\n{\n  \"tool_name\": \"<agent_or_tool_name>\",\n  \"arguments\": {\n    \"query\": \"Detailed, context-encapsulated instructions that enable the agent to craft a precise query. May include knowledge discovered in previous steps.\",\n    \"bindings\": { \"<param>\": \"<value>\" },\n    \"accounts_mentioned\": [\"…\"]\n  }\n}\n```\n\n> Typical `tool_name` values here are **`graph_agent`** and **`sql_agent`** (you call the agents; they will call their underlying tools like `graph.query` or the SQL executor).\n\n**Rules**\n- **Parameterize** all user inputs; never inline values into raw query strings.\n- If a later step uses outputs from an earlier call, pass them in appropriately named arguments (e.g., `accounts_filter`, `ids`, `offering`).\n\n---\n\n## Orchestration Patterns\n\n### A) **Sequential (dependency present)**\n\n**User:** “Accounts that have SOWs similar to Microsoft’s AI Chatbot engagements (offering: ai_chatbot). And then from SQL get the **account contacts** (Sales).”\n\n**Step 1 — Graph (discover related accounts)**\n\n```json\n{\n  \"tool_name\": \"graph_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Find accounts with SOWs similar to the target account's ai_chatbot engagements. Input: Target account = Microsoft Corporation; Offering filter = ai_chatbot. Output: A small, deduped list of related account names (and ids if available) suitable to hand off to SQL for contact lookup.\",\n    \"bindings\": { \"name\": \"Microsoft Corporation\", \"offering\": \"ai_chatbot\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n*Planner saves returned account names as `discovered_accounts`.*\n\n**Step 2 — SQL (use Graph outputs to fetch Sales contacts)**\n\n```json\n{\n  \"tool_name\": \"sql_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Get contacts for the discovered accounts. Emphasize Sales/GTMS roles if available; otherwise return all contacts. Sort by account name, then last name, first name. Limit 100.\",\n    \"bindings\": { \"accounts_filter\": [\"<from discovered_accounts>\"], \"department\": \"Sales\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n**Step 3 — Synthesize** a final answer combining Graph (which accounts) + SQL (Sales contacts).\n\n### B) **Parallel (independent)**\n\n**User:** “Show the top-5 accounts by 2024 revenue, and also list accounts with more than 3 active SOWs.”\n\n- Revenue rankings (SQL) and SOW counts (Graph) do **not** depend on each other → you **may** issue both tool calls in the same planning turn.\n- Merge results and respond.\n\n---\n\n## Planning Loop (Run-until-Done)\n\n1. **Analyze** the request → identify intents, data sources, and dependencies  \n2. **Choose** next action: Graph, SQL, or direct response  \n3. **Extract** `accounts_mentioned` from the user’s text  \n4. **Invoke** one or more tools (parallel **only** if independent)  \n5. **Append** each planner reply and each injection to the conversation; **update context** with outputs (e.g., `discovered_accounts`)  \n6. If more info is needed, **repeat**; else **finalize** with an assistant message\n\n**Termination:** Stop when the next best action is to answer without further tool calls.\n\n---\n\n## Response Quality\n\n- Produce complete, accurate responses\n- Maintain context across steps\n- Explain methodology when useful\n- Offer follow-ups and next actions"
     },
     {
       "role": "user",
-      "content": "All sales for Microsoft and its account relationships"
+      "content": "Accounts that have SOWs similar to Microsoft's AI Chatbot engagements (i think the offer name is ai_chatbot) and then a way to contact the related account contacts"
     }
   ],
   "tools": [
@@ -395,11 +263,11 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
 }
 ```
 
-### Planner Raw Response (Turn 1)
+### Planner Raw Response (Round 1)
 
 ```json
 {
-  "id": "chatcmpl-CJi8oadyO8hNivhMSQ1ORJfHKRiqP",
+  "id": "chatcmpl-CLDXfIjchggzoYDqQCNfuveMCaQCS",
   "choices": [
     {
       "finish_reason": "tool_calls",
@@ -414,17 +282,9 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
         "function_call": null,
         "tool_calls": [
           {
-            "id": "call_KYI7Yh9MYx2HvZGV68gdmqb2",
+            "id": "call_T6KgIkGCpEJvJziUlguU27KL",
             "function": {
-              "arguments": "{\"query\": \"Retrieve all sales data for Microsoft and its related accounts.\", \"accounts_mentioned\": [\"Microsoft\"]}",
-              "name": "sql_agent"
-            },
-            "type": "function"
-          },
-          {
-            "id": "call_PiiBPTxueJAwS9gUkSD4bjmw",
-            "function": {
-              "arguments": "{\"query\": \"Show all account relationships for Microsoft.\", \"accounts_mentioned\": [\"Microsoft\"]}",
+              "arguments": "{\"query\":\"Task: Find accounts with SOWs similar to the target account's ai_chatbot engagements. Input: Target account = Microsoft Corporation; Offering filter = ai_chatbot. Output: A small, deduped list of related account names (and ids if available) suitable to hand off to SQL for contact lookup.\",\"accounts_mentioned\":[\"Microsoft Corporation\"]}",
               "name": "graph_agent"
             },
             "type": "function"
@@ -434,15 +294,15 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
       "content_filter_results": {}
     }
   ],
-  "created": 1758813946,
+  "created": 1759172979,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
-  "system_fingerprint": "fp_c79ab13e31",
+  "system_fingerprint": "fp_4d7b201289",
   "usage": {
-    "completion_tokens": 73,
-    "prompt_tokens": 652,
-    "total_tokens": 725,
+    "completion_tokens": 84,
+    "prompt_tokens": 1669,
+    "total_tokens": 1753,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -451,7 +311,7 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
     },
     "prompt_tokens_details": {
       "audio_tokens": 0,
-      "cached_tokens": 0
+      "cached_tokens": 1536
     }
   },
   "prompt_filter_results": [
@@ -484,201 +344,12 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
 }
 ```
 
-### Planner Tool Calls (Turn 1)
-
-- Tool Call → sql_agent
-
-  Arguments: {"query": "Retrieve all sales data for Microsoft and its related accounts.", "accounts_mentioned": ["Microsoft"]}
-
+### Planner Tool Calls (Round 1)
 
 - Tool Call → graph_agent
 
-  Arguments: {"query": "Show all account relationships for Microsoft.", "accounts_mentioned": ["Microsoft"]}
+  Arguments: {"query":"Task: Find accounts with SOWs similar to the target account's ai_chatbot engagements. Input: Target account = Microsoft Corporation; Offering filter = ai_chatbot. Output: A small, deduped list of related account names (and ids if available) suitable to hand off to SQL for contact lookup.","accounts_mentioned":["Microsoft Corporation"]}
 
-
-### Agent Tools Loaded for sql_agent: ['sql_agent_function']
-
-### Agent Request
-
-```json
-{
-  "messages": [
-    {
-      "role": "system",
-      "content": "# SQL Agent System Prompt\n\nYou are a specialized SQL agent for a Salesforce Q&A chatbot. Your role is to help users query and analyze Salesforce data using SQL.\n\n## Your Capabilities\n- Execute SQL queries against Salesforce data\n- Analyze account performance, sales data, and customer information\n- Generate reports and insights from Salesforce data\n- Help users understand data relationships and trends\n\n## Guidelines\n1. **Always validate user permissions** before executing queries\n2. **Use parameterized queries** to prevent SQL injection\n3. **Limit result sets** to reasonable sizes (default: 100 rows)\n4. **Explain your findings** in business-friendly language\n5. **Suggest follow-up questions** when appropriate\n\n## Query Types You Handle\n- Account performance analysis\n- Sales pipeline reports\n- Customer segmentation queries\n- Opportunity tracking\n- Activity and engagement metrics\n\n## Response Format\nWhen executing SQL queries:\n1. Validate the request and user permissions\n2. Execute the appropriate SQL query\n3. Format results in a clear, readable format\n4. Provide business insights and explanations\n5. Suggest related queries or follow-up actions\n\n## Error Handling\n- If a query fails, explain the issue in user-friendly terms\n- Suggest alternative approaches or corrections\n- Never expose sensitive system information\n\nRemember: Your goal is to make Salesforce data accessible and actionable for business users.\n\n\nExact Account name values: Microsoft Corporation"
-    },
-    {
-      "role": "user",
-      "content": "Retrieve all sales data for Microsoft and its related accounts."
-    }
-  ],
-  "tools": [
-    {
-      "type": "function",
-      "function": {
-        "name": "sql_agent_function",
-        "description": "Execute SQL queries against the Fabric Lakehouse to retrieve sales and account data",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "query": {
-              "type": "string",
-              "description": "The SQL query to execute"
-            },
-            "limit": {
-              "type": "integer",
-              "description": "Maximum number of rows to return",
-              "default": 100
-            }
-          },
-          "required": [
-            "query"
-          ]
-        }
-      }
-    }
-  ],
-  "tool_choice": "auto"
-}
-```
-
-### Agent Raw Response
-
-```json
-{
-  "id": "chatcmpl-CJi8q5yz9REU3mFmXhHk6L5i89yK3",
-  "choices": [
-    {
-      "finish_reason": "tool_calls",
-      "index": 0,
-      "logprobs": null,
-      "message": {
-        "content": null,
-        "refusal": null,
-        "role": "assistant",
-        "annotations": [],
-        "audio": null,
-        "function_call": null,
-        "tool_calls": [
-          {
-            "id": "call_ndBhX9iu8EVe5Ic7hSEs0IqK",
-            "function": {
-              "arguments": "{\"query\":\"SELECT s.SaleID, s.AccountID, a.AccountName, s.SaleDate, s.Amount, s.OpportunityID, s.Stage, s.OwnerID\\nFROM Sales s\\nJOIN Accounts a ON s.AccountID = a.AccountID\\nWHERE a.AccountName = 'Microsoft Corporation' OR a.ParentAccountID = (SELECT AccountID FROM Accounts WHERE AccountName = 'Microsoft Corporation')\\nORDER BY s.SaleDate DESC\",\"limit\":100}",
-              "name": "sql_agent_function"
-            },
-            "type": "function"
-          }
-        ]
-      },
-      "content_filter_results": {}
-    }
-  ],
-  "created": 1758813948,
-  "model": "gpt-4.1-2025-04-14",
-  "object": "chat.completion",
-  "service_tier": null,
-  "system_fingerprint": "fp_9ab7d013ff",
-  "usage": {
-    "completion_tokens": 107,
-    "prompt_tokens": 374,
-    "total_tokens": 481,
-    "completion_tokens_details": {
-      "accepted_prediction_tokens": 0,
-      "audio_tokens": 0,
-      "reasoning_tokens": 0,
-      "rejected_prediction_tokens": 0
-    },
-    "prompt_tokens_details": {
-      "audio_tokens": 0,
-      "cached_tokens": 0
-    }
-  },
-  "prompt_filter_results": [
-    {
-      "prompt_index": 0,
-      "content_filter_results": {
-        "hate": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "jailbreak": {
-          "detected": false,
-          "filtered": false
-        },
-        "self_harm": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "sexual": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "violence": {
-          "filtered": false,
-          "severity": "safe"
-        }
-      }
-    }
-  ]
-}
-```
-
-### Agent Tool Calls
-
-- Tool Call → sql_agent_function
-
-  Arguments: {"query":"SELECT s.SaleID, s.AccountID, a.AccountName, s.SaleDate, s.Amount, s.OpportunityID, s.Stage, s.OwnerID\nFROM Sales s\nJOIN Accounts a ON s.AccountID = a.AccountID\nWHERE a.AccountName = 'Microsoft Corporation' OR a.ParentAccountID = (SELECT AccountID FROM Accounts WHERE AccountName = 'Microsoft Corporation')\nORDER BY s.SaleDate DESC","limit":100}
-
-
-### Executed SQL Tool: sql_agent_function
-
-```json
-{
-  "success": true,
-  "row_count": 3,
-  "error": null,
-  "sample_rows": [
-    {
-      "id": "opp_001",
-      "name": "Salesforce CRM Upgrade",
-      "amount": 2500000.0,
-      "stage": "Closed Won",
-      "close_date": "2024-03-15",
-      "account_name": "Salesforce Inc",
-      "account_id": "acc_salesforce"
-    },
-    {
-      "id": "opp_002",
-      "name": "Microsoft 365 Integration",
-      "amount": 1800000.0,
-      "stage": "Proposal",
-      "close_date": "2024-11-30",
-      "account_name": "Microsoft Corporation",
-      "account_id": "acc_microsoft"
-    },
-    {
-      "id": "opp_003",
-      "name": "Oracle Database Migration",
-      "amount": 3200000.0,
-      "stage": "Negotiation",
-      "close_date": "2024-12-15",
-      "account_name": "Oracle Corporation",
-      "account_id": "acc_oracle"
-    }
-  ],
-  "source": "sql",
-  "query": "SELECT s.SaleID, s.AccountID, a.AccountName, s.SaleDate, s.Amount, s.OpportunityID, s.Stage, s.OwnerID\nFROM Sales s\nJOIN Accounts a ON s.AccountID = a.AccountID\nWHERE a.AccountName = 'Microsoft Corporation' OR a.ParentAccountID = (SELECT AccountID FROM Accounts WHERE AccountName = 'Microsoft Corporation')\nORDER BY s.SaleDate DESC",
-  "columns": [
-    "id",
-    "name",
-    "amount",
-    "stage",
-    "close_date",
-    "account_name",
-    "account_id"
-  ]
-}
-```
 
 ### Agent Tools Loaded for graph_agent: ['graph_agent_function']
 
@@ -689,11 +360,11 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
   "messages": [
     {
       "role": "system",
-      "content": "# Graph Agent System Prompt (Cosmos Gremlin + Tool-calling)\n\nYou are a specialized graph relationship agent for a Salesforce Q&A chatbot. Your job is to reveal useful relationships between accounts, contacts, opportunities, and other entities **by producing a single tool call** to `graph.query`.  \n**You must always return a parameterized traversal and a `bindings` object** (never inline user input in the Gremlin string).\n\n---\n\n## What you can do\n- Query and traverse account relationship graphs\n- Identify connected entities and relationship patterns\n- Analyze account hierarchies and organizational structures\n- Find related accounts through various connection types\n- Provide relationship insights and recommendations\n\n## Relationship types you handle\n- Account hierarchies (parent/child)\n- Partnerships and vendor relationships\n- Contact connections across accounts\n- Opportunity collaborations\n- Geographic / industry clusters\n- Competitive relationships\n\n---\n\n## Tool contract (MANDATORY)\nCall the tool **once** with:\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"<GREMLIN WITH NAMED PARAMETERS>\",\n    \"bindings\": { \"<param>\": \"<value>\", ... },\n    \"format\": \"valueMap\" | \"project\",\n    \"max_depth\": <int 1..5>,\n    \"edge_labels\": [\"optional\",\"edge\",\"filters\"]\n  }\n}\n```\n\n### Parameterization rules\n- Never inline user values; always use named parameters and put values in `bindings`.\n- Example:\n  - `query`: `g.V().has('account','name',name).both().hasLabel('account').valueMap(true)`\n  - `bindings`: `{ \"name\": \"Microsoft Corporation\" }`\n\n### Result format\n- Prefer `\"format\":\"valueMap\"` → use `valueMap(true)` to include `id` and `label`.\n- If flattened scalars are needed, use `\"format\":\"project\"` and build the result with `project(...).by(id()).by(label()).by(values('prop'))`.  \n  Use `coalesce(values('prop'), constant(''))` for optional properties.\n\n---\n\n## Cosmos Gremlin compatibility (DO / DON’T)\n- ✅ Use supported steps only: `has/hasLabel`, `in/out/both`, `inE/outE/bothE`, `otherV`, `values`, `valueMap(true)`, `project`, `select`, `coalesce`, `constant`, `dedup`, `limit`, `count`.\n- ❌ Do **not** use unsupported steps such as `elementMap()` (rewrite with `valueMap(true)` or `project`).\n- ⚠️ Avoid naming a custom property `type` (Cosmos uses a `type` field for its own payload). Prefer `acct_type` or similar.\n\n---\n\n## Query patterns (use these recipes)\n\n### A) Related accounts (1 hop, any relationship)\n```json\n{\n  \"query\": \"g.V().has('account','name',name).both().hasLabel('account').valueMap(true)\",\n  \"bindings\": { \"name\": \"<account_name>\" },\n  \"format\": \"valueMap\",\n  \"max_depth\": 1\n}\n```\n\n### B) Related accounts + relationship label\n```json\n{\n  \"query\": \"g.V().has('account','name',name).bothE().as('e').otherV().hasLabel('account').as('v').project('id','name','rel').by(select('v').id()).by(select('v').values('name')).by(select('e').label())\",\n  \"bindings\": { \"name\": \"<account_name>\" },\n  \"format\": \"project\"\n}\n```\n\n### C) Up to N hops (small graphs only; honor max_depth)\n> Use simple chained hops or a bounded repeat; keep N ≤ `max_depth`.\n```json\n{\n  \"query\": \"g.V().has('account','name',name).repeat(both().hasLabel('account')).times(depth).dedup().valueMap(true)\",\n  \"bindings\": { \"name\": \"<account_name>\", \"depth\": 2 },\n  \"format\": \"valueMap\",\n  \"max_depth\": 2\n}\n```\n\n### D) Filter by edge labels (e.g., only competitors)\n```json\n{\n  \"query\": \"g.V().has('account','name',name).bothE(edge1,edge2).as('e').otherV().hasLabel('account').as('v').project('id','name','rel').by(select('v').id()).by(select('v').values('name')).by(select('e').label())\",\n  \"bindings\": { \"name\": \"<account_name>\", \"edge1\": \"competes_with\", \"edge2\": \"partner\" },\n  \"format\": \"project\"\n}\n```\n## Examples\n\n**Find related accounts for Microsoft**\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"g.V().has('account','name',name).both().hasLabel('account').valueMap(true)\",\n    \"bindings\": { \"name\": \"Microsoft Corporation\" },\n    \"format\": \"valueMap\",\n    \"max_depth\": 1\n  }\n}\n```\n\n**Find competitors and partners for Salesforce (with edge labels)**\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"g.V().has('account','name',name).bothE(edge1,edge2).as('e').otherV().hasLabel('account').as('v').project('id','name','rel').by(select('v').id()).by(select('v').values('name')).by(select('e').label())\",\n    \"bindings\": { \"name\": \"Salesforce\", \"edge1\": \"competes_with\", \"edge2\": \"partner\" },\n    \"format\": \"project\"\n  }\n}\n```\n\n**Remember:** Your goal is to reveal valuable business relationships and connection opportunities inside Salesforce data while using safe, parameterized, Cosmos-compatible Gremlin.\n\nExact Account name values: Microsoft Corporation"
+      "content": "# Graph Agent System Prompt (SOW-focused Cosmos Gremlin + Tool-calling)\n\nYou are a specialized graph relationship agent for a Salesforce Q&A chatbot. Your job is to reveal useful information about Statements of Work (SOWs), the accounts that commissioned them, and related engagements **by producing a single tool call** to `graph.query`.\n\nYou must always return a parameterized traversal and a `bindings` object (never inline user input in the Gremlin string).\n\n---\n\n## What you can do\n\n* Return SOWs for an account\n* Find other accounts with similar SOWs or related engagements\n* Filter SOWs by offering or other SOW properties\n* Return flattened SOW details for presentation\n* Provide small, bounded traversals suitable for Cosmos Gremlin\n\n## Data model (important)\n\n* `account` vertices — company-level entities (id, name, tier, industry, …)\n* `sow` vertices — Statements of Work (id, title, year, value, offering, tags, …)\n\n**Note:** `offering` is a property on the `sow` vertex (e.g., `offering: 'ai_chatbot'`), not a separate vertex. Focus traversals on `account` and `sow` connected by `has_sow` and `similar_to`.\n\n---\n\n## Tool contract (MANDATORY)\n\nCall the tool **once** with:\n\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"<GREMLIN WITH NAMED PARAMETERS>\",\n    \"bindings\": { \"<param>\": \"<value>\", \"...\": \"...\" },\n    \"format\": \"valueMap\" | \"project\",\n    \"max_depth\": <int 1..5>,\n    \"edge_labels\": [\"optional\",\"edge\",\"filters\"]\n  }\n}\n```\n\n### Parameterization rules\n\n* Never inline user values; always use named parameters in `bindings`.\n* Use `valueMap(true)` when you want `id` and `label`.\n* Keep traversals short; **max_depth ≤ 3** is recommended.\n\n### Cosmos Gremlin compatibility (DO / DON’T)\n\n* ✅ Use supported steps only: `has`, `hasLabel`, `in`, `out`, `both`, `inE`, `outE`, `bothE`, `otherV`, `values`, `valueMap(true)`, `project`, `select`, `coalesce`, `constant`, `dedup`, `limit`, `count`, `where`, `by`, `as`.\n* ✅ Prefer `out()` over `in()` when possible; edges are typically stored with the **source** vertex’s partition.\n* ✅ When selecting by vertex id in a partitioned container, also scope by the partition key when possible (e.g., `g.V(id).has('partitionKey', pk)`).\n* ❌ Avoid unsupported/undocumented steps; prefer `valueMap(true)`/`project` over `elementMap`.\n* ⚠️ Avoid naming a custom property `type`; use `acct_type`, etc.\n\n---\n\n## SOW-focused query recipes (parameterized)\n\n### 1) List all SOWs for an account (valueMap)\n\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"g.V().has('account','name',name).out('has_sow').hasLabel('sow').valueMap(true)\",\n    \"bindings\": { \"name\": \"Microsoft Corporation\" },\n    \"format\": \"valueMap\",\n    \"max_depth\": 1,\n    \"edge_labels\": [\"has_sow\"]\n  }\n}\n```\n\n### 2) Filter SOWs by offering for an account (valueMap)\n\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"g.V().has('account','name',name).out('has_sow').hasLabel('sow').has('offering', offering).valueMap(true)\",\n    \"bindings\": { \"name\": \"Microsoft Corporation\", \"offering\": \"ai_chatbot\" },\n    \"format\": \"valueMap\",\n    \"max_depth\": 1,\n    \"edge_labels\": [\"has_sow\"]\n  }\n}\n```\n\n### 3) Find other accounts with **offering-matched** similar SOWs (simple, directional) (project)\n\n> Uses a straightforward, Cosmos-friendly traversal. Follows `similar_to` **outbound** from the seed SOWs that match the requested `offering`, then resolves those similar SOWs back to their accounts.\n\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"g.V().has('account','name',name).out('has_sow').hasLabel('sow').has('offering', offering).as('msft_sow').out('similar_to').has('offering', offering).as('sim_sow').in('has_sow').hasLabel('account').dedup().project('id','name','sow').by(id).by(values('name')).by(select('sim_sow').id())\",\n    \"bindings\": { \"name\": \"Microsoft Corporation\", \"offering\": \"ai_chatbot\" },\n    \"format\": \"project\",\n    \"max_depth\": 3,\n    \"edge_labels\": [\"has_sow\",\"similar_to\"]\n  }\n}\n```\n\n**Notes:**\n\n* This variant assumes your similarity edges point **from** the seed SOW to the similar SOW (i.e., direction matters). If your data contains mixed or opposite directions, use the optional direction-agnostic variant below.\n\n**Optional direction-agnostic variant:**\n\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"g.V().has('account','name',name).as('src').out('has_sow').has('offering', offering).as('seed').bothE('similar_to').as('e').otherV().has('offering', offering).as('sim').in('has_sow').hasLabel('account').where(neq('src')).dedup().project('id','name','seedSow','similarSow','similarityScore','similarityNote').by(id).by(values('name')).by(select('seed').id()).by(select('sim').id()).by(select('e').values('score')).by(select('e').values('note'))\",\n    \"bindings\": { \"name\": \"Microsoft Corporation\", \"offering\": \"ai_chatbot\" },\n    \"format\": \"project\",\n    \"max_depth\": 3,\n    \"edge_labels\": [\"has_sow\",\"similar_to\"]\n  }\n}\n```\n\n### 4) SOW details by SOW id (project, PK-scoped)\n\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"g.V(sow_id).has('partitionKey', pk).hasLabel('sow').project('id','title','year','value','offering','tags').by(id).by(coalesce(values('title'), constant(''))).by(coalesce(values('year'), constant(''))).by(coalesce(values('value'), constant(''))).by(coalesce(values('offering'), constant(''))).by(coalesce(values('tags'), constant([])))\",\n    \"bindings\": { \"sow_id\": \"sow_msft_ai_chatbot_2023\", \"pk\": \"sow_msft_ai_chatbot_2023\" },\n    \"format\": \"project\",\n    \"max_depth\": 1\n  }\n}\n```\n\n### 5) Find SOWs across accounts that match an offering (valueMap, small result set)\n\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"g.V().hasLabel('sow').has('offering', offering).valueMap(true).limit(limit)\",\n    \"bindings\": { \"offering\": \"fabric_deployment\", \"limit\": 50 },\n    \"format\": \"valueMap\",\n    \"max_depth\": 1\n  }\n}\n```\n\n### 6) Top-N similar SOWs for a given SOW (project)\n\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"g.V(sow_id).has('partitionKey', pk).bothE('similar_to').as('e').order().by(values('score'), decr).limit(n).project('similarSow','score','note').by(otherV().id()).by(select('e').values('score')).by(select('e').values('note'))\",\n    \"bindings\": { \"sow_id\": \"sow_msft_ai_chatbot_2023\", \"pk\": \"sow_msft_ai_chatbot_2023\", \"n\": 10 },\n    \"format\": \"project\",\n    \"max_depth\": 2,\n    \"edge_labels\": [\"similar_to\"]\n  }\n}\n```\n\n### 7) Accounts with **any** SOW similar to this account’s SOWs (no offering filter) (project)\n\n```json\n{\n  \"tool_name\": \"graph.query\",\n  \"arguments\": {\n    \"query\": \"g.V().has('account','name',name).as('src').out('has_sow').as('seed').both('similar_to').as('sim').in('has_sow').hasLabel('account').where(neq('src')).dedup().project('id','name').by(id).by(values('name'))\",\n    \"bindings\": { \"name\": \"Salesforce Inc\" },\n    \"format\": \"project\",\n    \"max_depth\": 3,\n    \"edge_labels\": [\"has_sow\",\"similar_to\"]\n  }\n}\n```\n\n---\n\n## Implementation notes\n\n* Prefer starting from a **known vertex + partition** and traverse `out()` to minimize cross-partition work.\n* When you need edge props (e.g., `score`, `note`), bind the edge with `as('e')` and project `select('e').values('…')`.\n* For perf debugging in lower environments, append `.executionProfile()` to a traversal.\n\nExact Account name values: Microsoft Corporation"
     },
     {
       "role": "user",
-      "content": "Show all account relationships for Microsoft."
+      "content": "Task: Find accounts with SOWs similar to the target account's ai_chatbot engagements. Input: Target account = Microsoft Corporation; Offering filter = ai_chatbot. Output: A small, deduped list of related account names (and ids if available) suitable to hand off to SQL for contact lookup."
     }
   ],
   "tools": [
@@ -753,7 +424,7 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
 
 ```json
 {
-  "id": "chatcmpl-CJi8tuWyz1Bj6pkgnjRcZgqsI1d4l",
+  "id": "chatcmpl-CLDXhigQSMtqIBcq3Tm0RtLYP50rO",
   "choices": [
     {
       "finish_reason": "tool_calls",
@@ -768,9 +439,9 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
         "function_call": null,
         "tool_calls": [
           {
-            "id": "call_hVqmcT6FaNJ7i7Se9Cpeb3is",
+            "id": "call_bwJkb0b2C7a74iCPbQLjhujr",
             "function": {
-              "arguments": "{\n  \"query\": \"g.V().has('account','name',name).both().hasLabel('account').valueMap(true)\",\n  \"bindings\": {\n    \"name\": \"Microsoft Corporation\"\n  },\n  \"format\": \"valueMap\",\n  \"max_depth\": 1\n}\n",
+              "arguments": "{\n  \"query\": \"g.V().has('account','name',name).out('has_sow').hasLabel('sow').has('offering', offering).as('msft_sow').out('similar_to').has('offering', offering).as('sim_sow').in('has_sow').hasLabel('account').dedup().project('id','name','sow').by(id).by(values('name')).by(select('sim_sow').id())\",\n  \"bindings\": {\n    \"name\": \"Microsoft Corporation\",\n    \"offering\": \"ai_chatbot\"\n  },\n  \"format\": \"project\",\n  \"max_depth\": 3,\n  \"edge_labels\": [\n    \"has_sow\",\n    \"similar_to\"\n  ]\n}\n",
               "name": "graph_agent_function"
             },
             "type": "function"
@@ -780,15 +451,15 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
       "content_filter_results": {}
     }
   ],
-  "created": 1758813951,
+  "created": 1759172981,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
-  "system_fingerprint": "fp_9ab7d013ff",
+  "system_fingerprint": "fp_4d7b201289",
   "usage": {
-    "completion_tokens": 71,
-    "prompt_tokens": 1470,
-    "total_tokens": 1541,
+    "completion_tokens": 173,
+    "prompt_tokens": 2401,
+    "total_tokens": 2574,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -835,12 +506,17 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
 - Tool Call → graph_agent_function
 
   Arguments: {
-  "query": "g.V().has('account','name',name).both().hasLabel('account').valueMap(true)",
+  "query": "g.V().has('account','name',name).out('has_sow').hasLabel('sow').has('offering', offering).as('msft_sow').out('similar_to').has('offering', offering).as('sim_sow').in('has_sow').hasLabel('account').dedup().project('id','name','sow').by(id).by(values('name')).by(select('sim_sow').id())",
   "bindings": {
-    "name": "Microsoft Corporation"
+    "name": "Microsoft Corporation",
+    "offering": "ai_chatbot"
   },
-  "format": "valueMap",
-  "max_depth": 1
+  "format": "project",
+  "max_depth": 3,
+  "edge_labels": [
+    "has_sow",
+    "similar_to"
+  ]
 }
 
 
@@ -850,161 +526,26 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
 ```json
 {
   "success": true,
-  "row_count": 4,
+  "row_count": 2,
   "error": null,
   "sample_rows": [
     {
-      "id": "acc_google",
-      "label": "account",
-      "partitionKey": [
-        "acc_google"
-      ],
-      "name": [
-        "Google LLC"
-      ],
-      "type": [
-        "Cloud Services"
-      ],
-      "tier": [
-        "Competitor"
-      ],
-      "industry": [
-        "Technology"
-      ],
-      "revenue": [
-        "307.4B"
-      ],
-      "employees": [
-        190000
-      ],
-      "status": [
-        "Competitor"
-      ],
-      "contract_value": [
-        "0"
-      ],
-      "renewal_date": [
-        ""
-      ]
-    },
-    {
-      "id": "acc_aws",
-      "label": "account",
-      "partitionKey": [
-        "acc_aws"
-      ],
-      "name": [
-        "Amazon Web Services"
-      ],
-      "type": [
-        "Cloud Infrastructure"
-      ],
-      "tier": [
-        "Competitor"
-      ],
-      "industry": [
-        "Cloud Computing"
-      ],
-      "revenue": [
-        "90.0B"
-      ],
-      "employees": [
-        1600000
-      ],
-      "status": [
-        "Competitor"
-      ],
-      "contract_value": [
-        "0"
-      ],
-      "renewal_date": [
-        ""
-      ]
-    },
-    {
-      "id": "acc_sap",
-      "label": "account",
-      "partitionKey": [
-        "acc_sap"
-      ],
-      "name": [
-        "SAP SE"
-      ],
-      "type": [
-        "ERP"
-      ],
-      "tier": [
-        "Enterprise"
-      ],
-      "industry": [
-        "Enterprise Software"
-      ],
-      "revenue": [
-        "33.8B"
-      ],
-      "employees": [
-        111000
-      ],
-      "status": [
-        "Prospect"
-      ],
-      "contract_value": [
-        "0"
-      ],
-      "renewal_date": [
-        ""
-      ]
-    },
-    {
       "id": "acc_salesforce",
-      "label": "account",
-      "partitionKey": [
-        "acc_salesforce"
-      ],
-      "name": [
-        "Salesforce Inc"
-      ],
-      "type": [
-        "CRM"
-      ],
-      "tier": [
-        "Enterprise"
-      ],
-      "industry": [
-        "Technology"
-      ],
-      "revenue": [
-        "34.1B"
-      ],
-      "employees": [
-        79000
-      ],
-      "status": [
-        "Active Customer"
-      ],
-      "contract_value": [
-        "2.5M"
-      ],
-      "renewal_date": [
-        "2025-03-15"
-      ]
+      "name": "Salesforce Inc",
+      "sow": "sow_salesforce_ai_chatbot_2023"
+    },
+    {
+      "id": "acc_google",
+      "name": "Google LLC",
+      "sow": "sow_google_ai_chatbot_2024"
     }
   ],
   "source": "gremlin",
-  "query": "g.V().has('account','name',name).both().hasLabel('account').valueMap(true)",
+  "query": "g.V().has('account','name',name).out('has_sow').hasLabel('sow').has('offering', offering).as('msft_sow').out('similar_to').has('offering', offering).as('sim_sow').in('has_sow').hasLabel('account').dedup().project('id','name','sow').by(id).by(values('name')).by(select('sim_sow').id())",
   "columns": [
     "id",
-    "label",
-    "partitionKey",
     "name",
-    "type",
-    "tier",
-    "industry",
-    "revenue",
-    "employees",
-    "status",
-    "contract_value",
-    "renewal_date"
+    "sow"
   ]
 }
 ```
@@ -1013,314 +554,170 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
 
 ```markdown
 ### Its agent requests
-- **Agent**: `sql_agent`
-  - **Tool**: `sql_agent_function`
-    - **Arguments**: `{
-  "query": "SELECT s.SaleID, s.AccountID, a.AccountName, s.SaleDate, s.Amount, s.OpportunityID, s.Stage, s.OwnerID\nFROM Sales s\nJOIN Accounts a ON s.AccountID = a.AccountID\nWHERE a.AccountName = 'Microsoft Corporation' OR a.ParentAccountID = (SELECT AccountID FROM Accounts WHERE AccountName = 'Microsoft Corporation')\nORDER BY s.SaleDate DESC"
-}`
 - **Agent**: `graph_agent`
   - **Tool**: `graph_agent_function`
     - **Arguments**: `{
-  "query": "g.V().has('account','name',name).both().hasLabel('account').valueMap(true)",
+  "query": "g.V().has('account','name',name).out('has_sow').hasLabel('sow').has('offering', offering).as('msft_sow').out('similar_to').has('offering', offering).as('sim_sow').in('has_sow').hasLabel('account').dedup().project('id','name','sow').by(id).by(values('name')).by(select('sim_sow').id())",
   "bindings": {
-    "name": "Microsoft Corporation"
+    "name": "Microsoft Corporation",
+    "offering": "ai_chatbot"
   }
 }`
 
 ######Response from agents#######
-- **Agent**: `sql_agent`
-  - **Tool**: `sql_agent_function`
-    - **Summary**:
-      ```json
-{
-  "success": true,
-  "row_count": 3,
-  "error": null,
-  "columns": [
-    "id",
-    "name",
-    "amount",
-    "stage",
-    "close_date",
-    "account_name",
-    "account_id"
-  ],
-  "sample_rows": [
-    {
-      "id": "opp_001",
-      "name": "Salesforce CRM Upgrade",
-      "amount": 2500000.0,
-      "stage": "Closed Won",
-      "close_date": "2024-03-15",
-      "account_name": "Salesforce Inc",
-      "account_id": "acc_salesforce"
-    },
-    {
-      "id": "opp_002",
-      "name": "Microsoft 365 Integration",
-      "amount": 1800000.0,
-      "stage": "Proposal",
-      "close_date": "2024-11-30",
-      "account_name": "Microsoft Corporation",
-      "account_id": "acc_microsoft"
-    },
-    {
-      "id": "opp_003",
-      "name": "Oracle Database Migration",
-      "amount": 3200000.0,
-      "stage": "Negotiation",
-      "close_date": "2024-12-15",
-      "account_name": "Oracle Corporation",
-      "account_id": "acc_oracle"
-    }
-  ]
-}
-      ```
 - **Agent**: `graph_agent`
   - **Tool**: `graph_agent_function`
     - **Summary**:
       ```json
 {
   "success": true,
-  "row_count": 4,
+  "row_count": 2,
   "error": null,
   "columns": [
     "id",
-    "label",
-    "partitionKey",
     "name",
-    "type",
-    "tier",
-    "industry",
-    "revenue",
-    "employees",
-    "status",
-    "contract_value",
-    "renewal_date"
+    "sow"
   ],
   "sample_rows": [
     {
-      "id": "acc_google",
-      "label": "account",
-      "partitionKey": [
-        "acc_google"
-      ],
-      "name": [
-        "Google LLC"
-      ],
-      "type": [
-        "Cloud Services"
-      ],
-      "tier": [
-        "Competitor"
-      ],
-      "industry": [
-        "Technology"
-      ],
-      "revenue": [
-        "307.4B"
-      ],
-      "employees": [
-        190000
-      ],
-      "status": [
-        "Competitor"
-      ],
-      "contract_value": [
-        "0"
-      ],
-      "renewal_date": [
-        ""
-      ]
-    },
-    {
-      "id": "acc_aws",
-      "label": "account",
-      "partitionKey": [
-        "acc_aws"
-      ],
-      "name": [
-        "Amazon Web Services"
-      ],
-      "type": [
-        "Cloud Infrastructure"
-      ],
-      "tier": [
-        "Competitor"
-      ],
-      "industry": [
-        "Cloud Computing"
-      ],
-      "revenue": [
-        "90.0B"
-      ],
-      "employees": [
-        1600000
-      ],
-      "status": [
-        "Competitor"
-      ],
-      "contract_value": [
-        "0"
-      ],
-      "renewal_date": [
-        ""
-      ]
-    },
-    {
-      "id": "acc_sap",
-      "label": "account",
-      "partitionKey": [
-        "acc_sap"
-      ],
-      "name": [
-        "SAP SE"
-      ],
-      "type": [
-        "ERP"
-      ],
-      "tier": [
-        "Enterprise"
-      ],
-      "industry": [
-        "Enterprise Software"
-      ],
-      "revenue": [
-        "33.8B"
-      ],
-      "employees": [
-        111000
-      ],
-      "status": [
-        "Prospect"
-      ],
-      "contract_value": [
-        "0"
-      ],
-      "renewal_date": [
-        ""
-      ]
-    },
-    {
       "id": "acc_salesforce",
-      "label": "account",
-      "partitionKey": [
-        "acc_salesforce"
-      ],
-      "name": [
-        "Salesforce Inc"
-      ],
-      "type": [
-        "CRM"
-      ],
-      "tier": [
-        "Enterprise"
-      ],
-      "industry": [
-        "Technology"
-      ],
-      "revenue": [
-        "34.1B"
-      ],
-      "employees": [
-        79000
-      ],
-      "status": [
-        "Active Customer"
-      ],
-      "contract_value": [
-        "2.5M"
-      ],
-      "renewal_date": [
-        "2025-03-15"
-      ]
+      "name": "Salesforce Inc",
+      "sow": "sow_salesforce_ai_chatbot_2023"
+    },
+    {
+      "id": "acc_google",
+      "name": "Google LLC",
+      "sow": "sow_google_ai_chatbot_2024"
     }
   ]
 }
       ```
 ```
 
-### Planner Final Request (Turn 2)
+### Planner Request (Round 2)
 
 ```json
 {
   "messages": [
     {
       "role": "system",
-      "content": "# Planner Service System Prompt\n\nYou are the planner service for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the appropriate combination of agents and tools to provide comprehensive answers.\n\n## Your Capabilities\n- Analyze user intent and determine required actions\n- Route requests to appropriate specialized agents (SQL, Graph)\n- Coordinate multi-step workflows\n- Combine results from multiple agents\n- Provide direct answers for general questions\n\n## Agent Routing Guidelines\n\n### SQL Agent\nRoute to SQL agent for:\n- Data analysis and reporting requests\n- Questions about account performance, sales metrics\n- Requests for specific data queries or reports\n- Trend analysis and statistical questions\n\n### Graph Agent  \nRoute to Graph agent for:\n- Relationship and connection questions\n- Account hierarchy and organizational structure\n- Partnership and collaboration inquiries\n- Network analysis and pattern discovery\n\n### Direct Response\nProvide direct answers for:\n- General knowledge questions not related to proprietary data.\n\n### Multiple Function selection\n- You may select 1 or more tools to call - depending on User question.\n- If user asks about sales data AND relationships, you can call both tools.\n\n\n## Account Extraction Requirement\nFor every agent/tool call (e.g., SQL or Graph agent), you MUST extract the list of account names or aliases explicitly mentioned in the user query. Add these as an array field `accounts_mentioned` (list of strings, or `null` if no accounts are mentioned) in the agent/tool call parameters. If the user query is generic (e.g., \"sum of sales across all accounts\"), set `accounts_mentioned` to `null`.\n\n## Planning Process\n1. **Analyze Request**: Understand user intent and required information\n2. **Determine Agents**: Select appropriate agents based on request type\n3. **Extract Accounts**: Identify and list all account names/aliases mentioned in the query (or set to `null` if none)\n4. **Plan Sequence**: Order agent calls for optimal workflow\n5. **Coordinate Execution**: Manage agent interactions and data flow\n6. **Synthesize Results**: Combine outputs into coherent response\n\n## Multi-Agent Workflows\nFor complex requests that need multiple agents:\n1. Start with broader context (Graph agent for relationships)\n2. Drill down to specific data (SQL agent for metrics)\n3. Combine insights from both perspectives\n4. Provide unified, actionable recommendations\n\n## Response Quality\n- Ensure responses are complete and accurate\n- Maintain conversation context across agent calls\n- Provide clear explanations of methodology\n- Suggest follow-up questions and actions\n\nRemember: Your goal is to provide the most comprehensive and useful response by intelligently orchestrating available agents and tools.\n"
+      "content": "# Planner Service System Prompt (Parallel + Sequential Orchestration)\n\nYou are the **planner service** for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the right mix of agents and tools to produce complete answers.\n\nYour output is either:\n\n1. **One or more tool/agent calls** (when more info is required), or  \n2. **A final assistant message** (when you can answer without further tools).\n\n> **Run-until-done.** Keep planning and invoking tools until no additional tool calls are needed. When the next best action is to respond, stop and return a final assistant message.\n\n---\n\n## Capabilities\n\n- Analyze user intent and required data domains\n- Route requests to specialized agents (SQL, Graph)\n- Coordinate **sequential** and **parallel** tool calls\n- Combine multi-agent outputs into a unified answer\n- Provide direct answers for general questions\n- If tools are chosen: provide a **rich and clean context** for the agents. **Do not** write raw SQL or Gremlin. Instead, fill the `query` field with concise **instructions + context** that enables the agent to craft the precise query. For compound requests (multiple tools), each call’s context should include only what that agent needs.\n\n---\n\n## Agent Routing Guidelines\n\n### SQL Agent\nUse SQL for:\n- Account performance and sales metrics\n- Contact lists and CRM tables\n- Trend analysis and aggregations\n\n### Graph Agent\nUse Graph for SOWs & relationships:\n- SOWs for an account\n- Accounts with similar/related SOWs\n- Filtering SOWs by `offering`, tags, properties\n- Relationship questions (account level)\n- Account hierarchy / org structure\n\n### Direct Response\n- General knowledge not tied to proprietary data\n- Clarifications that require no tool calls\n\n---\n\n## Concurrency & Dependency Rules\n\n- **Parallel allowed:** Call multiple tools **at the same time** only when the calls are **independent** and the final answer is a simple merge.\n- **Sequential required:** When a later step **depends on outputs** from an earlier step, call the upstream tool **first**, wait for its result, then issue the downstream call with those outputs.\n- **Default stance:** If in doubt, prefer **sequential**.\n\n**Decision checklist:**\n1. Does Tool B need values produced by Tool A? → **Sequential** (A → B)  \n2. Can Tools A and B run on user-provided parameters alone? → **Parallel**  \n3. Will one tool’s result change the scope/filters of another? → **Sequential**\n\n---\n\n## State & Working Context\n\nMaintain a lightweight working context across steps (e.g., `discovered_accounts`, `selected_offering`, `time_range`). Use this context to parameterize later tool calls. Do **not** conflate context with `accounts_mentioned` (see below).\n\n---\n\n## Account Extraction Requirement (Mandatory)\n\nFor **every** agent/tool call (SQL or Graph), extract account names or aliases explicitly mentioned in the user query and include them as:\n\n```json\n\"accounts_mentioned\": [\"<Account A>\", \"<Account B>\"]\n```\n\n- If the user’s query is generic (e.g., “across all accounts”), set `accounts_mentioned` to `null`.\n- When passing **discovered** accounts from a prior step, include them in a **separate** argument field (e.g., `accounts_filter`)—do **not** mix them into `accounts_mentioned` unless the user originally said them.\n\n---\n\n## Tool/Agent Call Contract\n\nEmit each tool call as a single object:\n\n```json\n{\n  \"tool_name\": \"<agent_or_tool_name>\",\n  \"arguments\": {\n    \"query\": \"Detailed, context-encapsulated instructions that enable the agent to craft a precise query. May include knowledge discovered in previous steps.\",\n    \"bindings\": { \"<param>\": \"<value>\" },\n    \"accounts_mentioned\": [\"…\"]\n  }\n}\n```\n\n> Typical `tool_name` values here are **`graph_agent`** and **`sql_agent`** (you call the agents; they will call their underlying tools like `graph.query` or the SQL executor).\n\n**Rules**\n- **Parameterize** all user inputs; never inline values into raw query strings.\n- If a later step uses outputs from an earlier call, pass them in appropriately named arguments (e.g., `accounts_filter`, `ids`, `offering`).\n\n---\n\n## Orchestration Patterns\n\n### A) **Sequential (dependency present)**\n\n**User:** “Accounts that have SOWs similar to Microsoft’s AI Chatbot engagements (offering: ai_chatbot). And then from SQL get the **account contacts** (Sales).”\n\n**Step 1 — Graph (discover related accounts)**\n\n```json\n{\n  \"tool_name\": \"graph_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Find accounts with SOWs similar to the target account's ai_chatbot engagements. Input: Target account = Microsoft Corporation; Offering filter = ai_chatbot. Output: A small, deduped list of related account names (and ids if available) suitable to hand off to SQL for contact lookup.\",\n    \"bindings\": { \"name\": \"Microsoft Corporation\", \"offering\": \"ai_chatbot\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n*Planner saves returned account names as `discovered_accounts`.*\n\n**Step 2 — SQL (use Graph outputs to fetch Sales contacts)**\n\n```json\n{\n  \"tool_name\": \"sql_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Get contacts for the discovered accounts. Emphasize Sales/GTMS roles if available; otherwise return all contacts. Sort by account name, then last name, first name. Limit 100.\",\n    \"bindings\": { \"accounts_filter\": [\"<from discovered_accounts>\"], \"department\": \"Sales\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n**Step 3 — Synthesize** a final answer combining Graph (which accounts) + SQL (Sales contacts).\n\n### B) **Parallel (independent)**\n\n**User:** “Show the top-5 accounts by 2024 revenue, and also list accounts with more than 3 active SOWs.”\n\n- Revenue rankings (SQL) and SOW counts (Graph) do **not** depend on each other → you **may** issue both tool calls in the same planning turn.\n- Merge results and respond.\n\n---\n\n## Planning Loop (Run-until-Done)\n\n1. **Analyze** the request → identify intents, data sources, and dependencies  \n2. **Choose** next action: Graph, SQL, or direct response  \n3. **Extract** `accounts_mentioned` from the user’s text  \n4. **Invoke** one or more tools (parallel **only** if independent)  \n5. **Append** each planner reply and each injection to the conversation; **update context** with outputs (e.g., `discovered_accounts`)  \n6. If more info is needed, **repeat**; else **finalize** with an assistant message\n\n**Termination:** Stop when the next best action is to answer without further tool calls.\n\n---\n\n## Response Quality\n\n- Produce complete, accurate responses\n- Maintain context across steps\n- Explain methodology when useful\n- Offer follow-ups and next actions"
     },
     {
       "role": "user",
-      "content": "All sales for Microsoft and its account relationships"
+      "content": "Accounts that have SOWs similar to Microsoft's AI Chatbot engagements (i think the offer name is ai_chatbot) and then a way to contact the related account contacts"
     },
     {
       "role": "assistant",
-      "content": "### Its agent requests\n- **Agent**: `sql_agent`\n  - **Tool**: `sql_agent_function`\n    - **Arguments**: `{\n  \"query\": \"SELECT s.SaleID, s.AccountID, a.AccountName, s.SaleDate, s.Amount, s.OpportunityID, s.Stage, s.OwnerID\\nFROM Sales s\\nJOIN Accounts a ON s.AccountID = a.AccountID\\nWHERE a.AccountName = 'Microsoft Corporation' OR a.ParentAccountID = (SELECT AccountID FROM Accounts WHERE AccountName = 'Microsoft Corporation')\\nORDER BY s.SaleDate DESC\"\n}`\n- **Agent**: `graph_agent`\n  - **Tool**: `graph_agent_function`\n    - **Arguments**: `{\n  \"query\": \"g.V().has('account','name',name).both().hasLabel('account').valueMap(true)\",\n  \"bindings\": {\n    \"name\": \"Microsoft Corporation\"\n  }\n}`\n\n######Response from agents#######\n- **Agent**: `sql_agent`\n  - **Tool**: `sql_agent_function`\n    - **Summary**:\n      ```json\n{\n  \"success\": true,\n  \"row_count\": 3,\n  \"error\": null,\n  \"columns\": [\n    \"id\",\n    \"name\",\n    \"amount\",\n    \"stage\",\n    \"close_date\",\n    \"account_name\",\n    \"account_id\"\n  ],\n  \"sample_rows\": [\n    {\n      \"id\": \"opp_001\",\n      \"name\": \"Salesforce CRM Upgrade\",\n      \"amount\": 2500000.0,\n      \"stage\": \"Closed Won\",\n      \"close_date\": \"2024-03-15\",\n      \"account_name\": \"Salesforce Inc\",\n      \"account_id\": \"acc_salesforce\"\n    },\n    {\n      \"id\": \"opp_002\",\n      \"name\": \"Microsoft 365 Integration\",\n      \"amount\": 1800000.0,\n      \"stage\": \"Proposal\",\n      \"close_date\": \"2024-11-30\",\n      \"account_name\": \"Microsoft Corporation\",\n      \"account_id\": \"acc_microsoft\"\n    },\n    {\n      \"id\": \"opp_003\",\n      \"name\": \"Oracle Database Migration\",\n      \"amount\": 3200000.0,\n      \"stage\": \"Negotiation\",\n      \"close_date\": \"2024-12-15\",\n      \"account_name\": \"Oracle Corporation\",\n      \"account_id\": \"acc_oracle\"\n    }\n  ]\n}\n      ```\n- **Agent**: `graph_agent`\n  - **Tool**: `graph_agent_function`\n    - **Summary**:\n      ```json\n{\n  \"success\": true,\n  \"row_count\": 4,\n  \"error\": null,\n  \"columns\": [\n    \"id\",\n    \"label\",\n    \"partitionKey\",\n    \"name\",\n    \"type\",\n    \"tier\",\n    \"industry\",\n    \"revenue\",\n    \"employees\",\n    \"status\",\n    \"contract_value\",\n    \"renewal_date\"\n  ],\n  \"sample_rows\": [\n    {\n      \"id\": \"acc_google\",\n      \"label\": \"account\",\n      \"partitionKey\": [\n        \"acc_google\"\n      ],\n      \"name\": [\n        \"Google LLC\"\n      ],\n      \"type\": [\n        \"Cloud Services\"\n      ],\n      \"tier\": [\n        \"Competitor\"\n      ],\n      \"industry\": [\n        \"Technology\"\n      ],\n      \"revenue\": [\n        \"307.4B\"\n      ],\n      \"employees\": [\n        190000\n      ],\n      \"status\": [\n        \"Competitor\"\n      ],\n      \"contract_value\": [\n        \"0\"\n      ],\n      \"renewal_date\": [\n        \"\"\n      ]\n    },\n    {\n      \"id\": \"acc_aws\",\n      \"label\": \"account\",\n      \"partitionKey\": [\n        \"acc_aws\"\n      ],\n      \"name\": [\n        \"Amazon Web Services\"\n      ],\n      \"type\": [\n        \"Cloud Infrastructure\"\n      ],\n      \"tier\": [\n        \"Competitor\"\n      ],\n      \"industry\": [\n        \"Cloud Computing\"\n      ],\n      \"revenue\": [\n        \"90.0B\"\n      ],\n      \"employees\": [\n        1600000\n      ],\n      \"status\": [\n        \"Competitor\"\n      ],\n      \"contract_value\": [\n        \"0\"\n      ],\n      \"renewal_date\": [\n        \"\"\n      ]\n    },\n    {\n      \"id\": \"acc_sap\",\n      \"label\": \"account\",\n      \"partitionKey\": [\n        \"acc_sap\"\n      ],\n      \"name\": [\n        \"SAP SE\"\n      ],\n      \"type\": [\n        \"ERP\"\n      ],\n      \"tier\": [\n        \"Enterprise\"\n      ],\n      \"industry\": [\n        \"Enterprise Software\"\n      ],\n      \"revenue\": [\n        \"33.8B\"\n      ],\n      \"employees\": [\n        111000\n      ],\n      \"status\": [\n        \"Prospect\"\n      ],\n      \"contract_value\": [\n        \"0\"\n      ],\n      \"renewal_date\": [\n        \"\"\n      ]\n    },\n    {\n      \"id\": \"acc_salesforce\",\n      \"label\": \"account\",\n      \"partitionKey\": [\n        \"acc_salesforce\"\n      ],\n      \"name\": [\n        \"Salesforce Inc\"\n      ],\n      \"type\": [\n        \"CRM\"\n      ],\n      \"tier\": [\n        \"Enterprise\"\n      ],\n      \"industry\": [\n        \"Technology\"\n      ],\n      \"revenue\": [\n        \"34.1B\"\n      ],\n      \"employees\": [\n        79000\n      ],\n      \"status\": [\n        \"Active Customer\"\n      ],\n      \"contract_value\": [\n        \"2.5M\"\n      ],\n      \"renewal_date\": [\n        \"2025-03-15\"\n      ]\n    }\n  ]\n}\n      ```"
+      "content": "### Its agent requests\n- **Agent**: `graph_agent`\n  - **Tool**: `graph_agent_function`\n    - **Arguments**: `{\n  \"query\": \"g.V().has('account','name',name).out('has_sow').hasLabel('sow').has('offering', offering).as('msft_sow').out('similar_to').has('offering', offering).as('sim_sow').in('has_sow').hasLabel('account').dedup().project('id','name','sow').by(id).by(values('name')).by(select('sim_sow').id())\",\n  \"bindings\": {\n    \"name\": \"Microsoft Corporation\",\n    \"offering\": \"ai_chatbot\"\n  }\n}`\n\n######Response from agents#######\n- **Agent**: `graph_agent`\n  - **Tool**: `graph_agent_function`\n    - **Summary**:\n      ```json\n{\n  \"success\": true,\n  \"row_count\": 2,\n  \"error\": null,\n  \"columns\": [\n    \"id\",\n    \"name\",\n    \"sow\"\n  ],\n  \"sample_rows\": [\n    {\n      \"id\": \"acc_salesforce\",\n      \"name\": \"Salesforce Inc\",\n      \"sow\": \"sow_salesforce_ai_chatbot_2023\"\n    },\n    {\n      \"id\": \"acc_google\",\n      \"name\": \"Google LLC\",\n      \"sow\": \"sow_google_ai_chatbot_2024\"\n    }\n  ]\n}\n      ```"
     },
     {
       "role": "user",
-      "content": "Using the information above, provide the final answer to the user."
+      "content": "Using the information above, continue the plan or provide the final answer."
     }
-  ]
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "graph_agent",
+        "description": "Graph agent for querying relationships, connections, and account information from the knowledge graph",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "accounts_mentioned": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "query",
+            "accounts_mentioned"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "sql_agent",
+        "description": "SQL agent for querying sales data, revenue metrics, and business analytics from the Fabric Lakehouse",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "accounts_mentioned": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "query",
+            "accounts_mentioned"
+          ]
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto"
 }
 ```
 
-### Planner Final Raw Response (Turn 2)
+### Planner Raw Response (Round 2)
 
 ```json
 {
-  "id": "chatcmpl-CJi8x56l1d2hBXma5oF4WgzTPYw50",
+  "id": "chatcmpl-CLDXoXbeVoZCop6tecdNKv9DfSCiE",
   "choices": [
     {
-      "finish_reason": "stop",
+      "finish_reason": "tool_calls",
       "index": 0,
       "logprobs": null,
       "message": {
-        "content": "Here’s a summary of all sales for Microsoft and its account relationships, along with an overview of Microsoft’s key account connections:\n\n### Sales for Microsoft and Related Accounts\n\n| Opportunity Name            | Account Name           | Amount      | Stage         | Close Date   |\n|-----------------------------|------------------------|-------------|---------------|--------------|\n| Microsoft 365 Integration   | Microsoft Corporation  | $1,800,000  | Proposal      | 2024-11-30   |\n| Salesforce CRM Upgrade      | Salesforce Inc         | $2,500,000  | Closed Won    | 2024-03-15   |\n| Oracle Database Migration   | Oracle Corporation     | $3,200,000  | Negotiation   | 2024-12-15   |\n\n*Note: The table includes sales for Microsoft and accounts directly related to it.*\n\n---\n\n### Microsoft’s Account Relationships\n\nBased on the relationship graph, Microsoft Corporation is connected with the following key accounts:\n\n- **Google LLC** (Competitor, Cloud Services)\n- **Amazon Web Services (AWS)** (Competitor, Cloud Infrastructure)\n- **SAP SE** (Prospect, ERP)\n- **Salesforce Inc** (Enterprise Customer, CRM)\n\nThese relationships indicate Microsoft’s ecosystem includes major technology competitors and enterprise partners.\n\n---\n\n#### Next Steps / Follow-up\n\n- If you need more detailed sales breakdowns for each related account, or want to explore specific partnership types, let me know!\n- I can also provide deeper insights into the nature of each relationship or recent sales trends for Microsoft and its network.",
+        "content": null,
         "refusal": null,
         "role": "assistant",
         "annotations": [],
         "audio": null,
         "function_call": null,
-        "tool_calls": null
+        "tool_calls": [
+          {
+            "id": "call_HR2kVmJCUFfF5aWdxErdZZ64",
+            "function": {
+              "arguments": "{\n  \"query\": \"Task: Retrieve contact information for the accounts discovered in the previous step (Salesforce Inc and Google LLC). Focus on contacts relevant to Sales or GTMS roles if available; otherwise, include all contacts. Return contact name, title, email, and phone if possible. Sort by account name, then last name, first name. Limit 100.\",\n  \"accounts_mentioned\": [\"Microsoft Corporation\"],\n  \"bindings\": {\n    \"accounts_filter\": [\"Salesforce Inc\", \"Google LLC\"],\n    \"department\": \"Sales\"\n  }\n}",
+              "name": "sql_agent"
+            },
+            "type": "function"
+          }
+        ]
       },
-      "content_filter_results": {
-        "hate": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "protected_material_code": {
-          "filtered": false,
-          "detected": false
-        },
-        "protected_material_text": {
-          "filtered": false,
-          "detected": false
-        },
-        "self_harm": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "sexual": {
-          "filtered": false,
-          "severity": "safe"
-        },
-        "violence": {
-          "filtered": false,
-          "severity": "safe"
-        }
-      }
+      "content_filter_results": {}
     }
   ],
-  "created": 1758813955,
+  "created": 1759172988,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
-  "system_fingerprint": "fp_c79ab13e31",
+  "system_fingerprint": "fp_4d7b201289",
   "usage": {
-    "completion_tokens": 319,
-    "prompt_tokens": 1810,
-    "total_tokens": 2129,
+    "completion_tokens": 124,
+    "prompt_tokens": 2015,
+    "total_tokens": 2139,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -1362,52 +759,646 @@ I'm just a virtual assistant, so I don't have feelings, but I'm here and ready t
 }
 ```
 
-## Final Answer
+### Planner Tool Calls (Round 2)
 
-Here’s a summary of all sales for Microsoft and its account relationships, along with an overview of Microsoft’s key account connections:
+- Tool Call → sql_agent
 
-### Sales for Microsoft and Related Accounts
+  Arguments: {
+  "query": "Task: Retrieve contact information for the accounts discovered in the previous step (Salesforce Inc and Google LLC). Focus on contacts relevant to Sales or GTMS roles if available; otherwise, include all contacts. Return contact name, title, email, and phone if possible. Sort by account name, then last name, first name. Limit 100.",
+  "accounts_mentioned": ["Microsoft Corporation"],
+  "bindings": {
+    "accounts_filter": ["Salesforce Inc", "Google LLC"],
+    "department": "Sales"
+  }
+}
 
-| Opportunity Name            | Account Name           | Amount      | Stage         | Close Date   |
-|-----------------------------|------------------------|-------------|---------------|--------------|
-| Microsoft 365 Integration   | Microsoft Corporation  | $1,800,000  | Proposal      | 2024-11-30   |
-| Salesforce CRM Upgrade      | Salesforce Inc         | $2,500,000  | Closed Won    | 2024-03-15   |
-| Oracle Database Migration   | Oracle Corporation     | $3,200,000  | Negotiation   | 2024-12-15   |
 
-*Note: The table includes sales for Microsoft and accounts directly related to it.*
+### Agent Tools Loaded for sql_agent: ['sql_agent_function']
 
----
-
-### Microsoft’s Account Relationships
-
-Based on the relationship graph, Microsoft Corporation is connected with the following key accounts:
-
-- **Google LLC** (Competitor, Cloud Services)
-- **Amazon Web Services (AWS)** (Competitor, Cloud Infrastructure)
-- **SAP SE** (Prospect, ERP)
-- **Salesforce Inc** (Enterprise Customer, CRM)
-
-These relationships indicate Microsoft’s ecosystem includes major technology competitors and enterprise partners.
-
----
-
-#### Next Steps / Follow-up
-
-- If you need more detailed sales breakdowns for each related account, or want to explore specific partnership types, let me know!
-- I can also provide deeper insights into the nature of each relationship or recent sales trends for Microsoft and its network.
-
----
-
-## Query: All sales
-
-### Planner Request (Turn 1)
+### Agent Request
 
 ```json
 {
   "messages": [
     {
       "role": "system",
-      "content": "# Planner Service System Prompt\n\nYou are the planner service for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the appropriate combination of agents and tools to provide comprehensive answers.\n\n## Your Capabilities\n- Analyze user intent and determine required actions\n- Route requests to appropriate specialized agents (SQL, Graph)\n- Coordinate multi-step workflows\n- Combine results from multiple agents\n- Provide direct answers for general questions\n\n## Agent Routing Guidelines\n\n### SQL Agent\nRoute to SQL agent for:\n- Data analysis and reporting requests\n- Questions about account performance, sales metrics\n- Requests for specific data queries or reports\n- Trend analysis and statistical questions\n\n### Graph Agent  \nRoute to Graph agent for:\n- Relationship and connection questions\n- Account hierarchy and organizational structure\n- Partnership and collaboration inquiries\n- Network analysis and pattern discovery\n\n### Direct Response\nProvide direct answers for:\n- General knowledge questions not related to proprietary data.\n\n### Multiple Function selection\n- You may select 1 or more tools to call - depending on User question.\n- If user asks about sales data AND relationships, you can call both tools.\n\n\n## Account Extraction Requirement\nFor every agent/tool call (e.g., SQL or Graph agent), you MUST extract the list of account names or aliases explicitly mentioned in the user query. Add these as an array field `accounts_mentioned` (list of strings, or `null` if no accounts are mentioned) in the agent/tool call parameters. If the user query is generic (e.g., \"sum of sales across all accounts\"), set `accounts_mentioned` to `null`.\n\n## Planning Process\n1. **Analyze Request**: Understand user intent and required information\n2. **Determine Agents**: Select appropriate agents based on request type\n3. **Extract Accounts**: Identify and list all account names/aliases mentioned in the query (or set to `null` if none)\n4. **Plan Sequence**: Order agent calls for optimal workflow\n5. **Coordinate Execution**: Manage agent interactions and data flow\n6. **Synthesize Results**: Combine outputs into coherent response\n\n## Multi-Agent Workflows\nFor complex requests that need multiple agents:\n1. Start with broader context (Graph agent for relationships)\n2. Drill down to specific data (SQL agent for metrics)\n3. Combine insights from both perspectives\n4. Provide unified, actionable recommendations\n\n## Response Quality\n- Ensure responses are complete and accurate\n- Maintain conversation context across agent calls\n- Provide clear explanations of methodology\n- Suggest follow-up questions and actions\n\nRemember: Your goal is to provide the most comprehensive and useful response by intelligently orchestrating available agents and tools.\n"
+      "content": "# SQL Agent System Prompt (with Data Model)\n\nYou are a specialized **SQL agent** for a Salesforce Q&A chatbot. Your role is to query and analyze Salesforce-style data using SQL and return insights.\n\nYour output is either: (1) a parameterized SQL tool call\n\n---\n\n## Capabilities\n\n* Execute SQL queries against Salesforce-like tables\n* Analyze account performance, sales/opportunities, and contacts\n\n---\n\n## Data Model (Authoritative)\n\nThe development dataset exposes three logical tables with the following columns. Use these names in queries.\n\n### 1) `accounts`\n\n* `id` (PK)\n* `name`\n* `owner_email`\n* `created_at`\n* `updated_at`\n\n### 2) `opportunities`\n\n(Also referred to by users as **sales** or **opps** — treat as the same table)\n\n* `id` (PK)\n* `name`\n* `amount` (numeric)\n* `stage` (e.g., `Closed Won`, `Proposal`, `Negotiation`)\n* `close_date` (ISO string)\n* `account_name` (denormalized helper)\n* `account_id` (FK → `accounts.id`)\n\n### 3) `contacts`\n\n* `id` (PK)\n* `first_name`\n* `last_name`\n* `email`\n* `account_id` (FK → `accounts.id`)\n\n#### Relationships\n\n* `opportunities.account_id = accounts.id`\n* `contacts.account_id = accounts.id`\n\n---\n\n## Query Recipes (Parameterized)\n\n### A) Contacts for a set of accounts (e.g., from Graph results)\n\n```sql\nSELECT a.name AS account_name,\n       c.first_name,\n       c.last_name,\n       c.email\nFROM contacts c\nJOIN accounts a ON a.id = c.account_id\nWHERE a.name IN (:accounts)\nORDER BY a.name, c.last_name, c.first_name\nLIMIT :limit;\n```\n### B) Opportunities for specific accounts, by stage and date window\n\n```sql\nSELECT a.name AS account_name,\n       o.id,\n       o.name,\n       o.amount,\n       o.stage,\n       o.close_date\nFROM opportunities o\nJOIN accounts a ON a.id = o.account_id\nWHERE a.name IN (:accounts)\n  AND (:stage IS NULL OR o.stage = :stage)\n  AND (:from IS NULL  OR o.close_date >= :from)\n  AND (:to   IS NULL  OR o.close_date <  :to)\nORDER BY o.close_date DESC\nLIMIT :limit;\n```\n### C) Revenue by account (Closed Won only)\n\n```sql\nSELECT a.name AS account_name,\n       SUM(o.amount) AS total_revenue\nFROM opportunities o\nJOIN accounts a ON a.id = o.account_id\nWHERE o.stage = 'Closed Won'\n  AND (:accounts_is_all = 1 OR a.name IN (:accounts))\nGROUP BY a.name\nORDER BY total_revenue DESC\nLIMIT :limit;\n```\n\n### D) Account directory (owners)\n\n```sql\nSELECT id,\n       name,\n       owner_email,\n       created_at,\n       updated_at\nFROM accounts\nWHERE (:accounts_is_all = 1 OR name IN (:accounts))\nORDER BY updated_at DESC\nLIMIT :limit;\n```\n---\n\n## Response Format\n\n1. Run a **parameterized** query.\n2. Return table.\n---\n\n## Defaults & Limits\n\n* `LIMIT 100` unless otherwise specified.\n* Reasonable defaults for ordering (`close_date` desc, `amount` desc).\n* Dates expected as ISO strings (YYYY-MM-DD).\n\nExact Account name values: Microsoft Corporation"
+    },
+    {
+      "role": "user",
+      "content": "Task: Retrieve contact information for the accounts discovered in the previous step (Salesforce Inc and Google LLC). Focus on contacts relevant to Sales or GTMS roles if available; otherwise, include all contacts. Return contact name, title, email, and phone if possible. Sort by account name, then last name, first name. Limit 100."
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "sql_agent_function",
+        "description": "Execute SQL queries against the Fabric Lakehouse to retrieve sales and account data",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The SQL query to execute"
+            },
+            "limit": {
+              "type": "integer",
+              "description": "Maximum number of rows to return",
+              "default": 100
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto"
+}
+```
+
+### Agent Raw Response
+
+```json
+{
+  "id": "chatcmpl-CLDXqFQbpImXBxgT8UmPiXlwuJYja",
+  "choices": [
+    {
+      "finish_reason": "tool_calls",
+      "index": 0,
+      "logprobs": null,
+      "message": {
+        "content": null,
+        "refusal": null,
+        "role": "assistant",
+        "annotations": [],
+        "audio": null,
+        "function_call": null,
+        "tool_calls": [
+          {
+            "id": "call_gAun0OkEVFrH24o4GkfqXlJL",
+            "function": {
+              "arguments": "{\"query\":\"SELECT a.name AS account_name,\\n       c.first_name,\\n       c.last_name,\\n       c.email\\nFROM contacts c\\nJOIN accounts a ON a.id = c.account_id\\nWHERE a.name IN ('Salesforce Inc', 'Google LLC')\\nORDER BY a.name, c.last_name, c.first_name\\nLIMIT 100;\"}",
+              "name": "sql_agent_function"
+            },
+            "type": "function"
+          }
+        ]
+      },
+      "content_filter_results": {}
+    }
+  ],
+  "created": 1759172990,
+  "model": "gpt-4.1-2025-04-14",
+  "object": "chat.completion",
+  "service_tier": null,
+  "system_fingerprint": "fp_4d7b201289",
+  "usage": {
+    "completion_tokens": 86,
+    "prompt_tokens": 882,
+    "total_tokens": 968,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0
+    }
+  },
+  "prompt_filter_results": [
+    {
+      "prompt_index": 0,
+      "content_filter_results": {
+        "hate": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "jailbreak": {
+          "filtered": false,
+          "detected": false
+        },
+        "self_harm": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "sexual": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "violence": {
+          "filtered": false,
+          "severity": "safe"
+        }
+      }
+    }
+  ]
+}
+```
+
+### Agent Tool Calls
+
+- Tool Call → sql_agent_function
+
+  Arguments: {"query":"SELECT a.name AS account_name,\n       c.first_name,\n       c.last_name,\n       c.email\nFROM contacts c\nJOIN accounts a ON a.id = c.account_id\nWHERE a.name IN ('Salesforce Inc', 'Google LLC')\nORDER BY a.name, c.last_name, c.first_name\nLIMIT 100;"}
+
+
+### Executed SQL Tool: sql_agent_function
+
+```json
+{
+  "success": true,
+  "row_count": 8,
+  "error": null,
+  "sample_rows": [
+    {
+      "table": "accounts",
+      "id": "acc_salesforce",
+      "name": "Salesforce Inc",
+      "owner_email": "owner@salesforce.com",
+      "created_at": "2023-01-15",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_microsoft",
+      "name": "Microsoft Corporation",
+      "owner_email": "owner@microsoft.com",
+      "created_at": "2023-02-20",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_oracle",
+      "name": "Oracle Corporation",
+      "owner_email": "owner@oracle.com",
+      "created_at": "2023-03-10",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_google",
+      "name": "Google LLC",
+      "owner_email": "owner@google.com",
+      "created_at": "2023-04-05",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "contacts",
+      "id": "contact_001",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "John",
+      "last_name": "Smith",
+      "email": "john.smith@salesforce.com",
+      "account_id": "acc_salesforce"
+    },
+    {
+      "table": "contacts",
+      "id": "contact_002",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Jane",
+      "last_name": "Doe",
+      "email": "jane.doe@microsoft.com",
+      "account_id": "acc_microsoft"
+    },
+    {
+      "table": "contacts",
+      "id": "contact_003",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Bob",
+      "last_name": "Johnson",
+      "email": "bob.johnson@oracle.com",
+      "account_id": "acc_oracle"
+    },
+    {
+      "table": "contacts",
+      "id": "contact_004",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Alice",
+      "last_name": "Williams",
+      "email": "alice.williams@google.com",
+      "account_id": "acc_google"
+    }
+  ],
+  "source": "sql",
+  "query": "SELECT a.name AS account_name,\n       c.first_name,\n       c.last_name,\n       c.email\nFROM contacts c\nJOIN accounts a ON a.id = c.account_id\nWHERE a.name IN ('Salesforce Inc', 'Google LLC')\nORDER BY a.name, c.last_name, c.first_name\nLIMIT 100;",
+  "columns": [
+    "table",
+    "id",
+    "name",
+    "owner_email",
+    "created_at",
+    "updated_at",
+    "first_name",
+    "last_name",
+    "email",
+    "account_id"
+  ]
+}
+```
+
+### Injection Back to Planner
+
+```markdown
+### Its agent requests
+- **Agent**: `sql_agent`
+  - **Tool**: `sql_agent_function`
+    - **Arguments**: `{
+  "query": "SELECT a.name AS account_name,\n       c.first_name,\n       c.last_name,\n       c.email\nFROM contacts c\nJOIN accounts a ON a.id = c.account_id\nWHERE a.name IN ('Salesforce Inc', 'Google LLC')\nORDER BY a.name, c.last_name, c.first_name\nLIMIT 100;"
+}`
+
+######Response from agents#######
+- **Agent**: `sql_agent`
+  - **Tool**: `sql_agent_function`
+    - **Summary**:
+      ```json
+{
+  "success": true,
+  "row_count": 8,
+  "error": null,
+  "columns": [
+    "table",
+    "id",
+    "name",
+    "owner_email",
+    "created_at",
+    "updated_at",
+    "first_name",
+    "last_name",
+    "email",
+    "account_id"
+  ],
+  "sample_rows": [
+    {
+      "table": "accounts",
+      "id": "acc_salesforce",
+      "name": "Salesforce Inc",
+      "owner_email": "owner@salesforce.com",
+      "created_at": "2023-01-15",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_microsoft",
+      "name": "Microsoft Corporation",
+      "owner_email": "owner@microsoft.com",
+      "created_at": "2023-02-20",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_oracle",
+      "name": "Oracle Corporation",
+      "owner_email": "owner@oracle.com",
+      "created_at": "2023-03-10",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_google",
+      "name": "Google LLC",
+      "owner_email": "owner@google.com",
+      "created_at": "2023-04-05",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "contacts",
+      "id": "contact_001",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "John",
+      "last_name": "Smith",
+      "email": "john.smith@salesforce.com",
+      "account_id": "acc_salesforce"
+    },
+    {
+      "table": "contacts",
+      "id": "contact_002",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Jane",
+      "last_name": "Doe",
+      "email": "jane.doe@microsoft.com",
+      "account_id": "acc_microsoft"
+    },
+    {
+      "table": "contacts",
+      "id": "contact_003",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Bob",
+      "last_name": "Johnson",
+      "email": "bob.johnson@oracle.com",
+      "account_id": "acc_oracle"
+    },
+    {
+      "table": "contacts",
+      "id": "contact_004",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Alice",
+      "last_name": "Williams",
+      "email": "alice.williams@google.com",
+      "account_id": "acc_google"
+    }
+  ]
+}
+      ```
+```
+
+### Planner Request (Round 3)
+
+```json
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "# Planner Service System Prompt (Parallel + Sequential Orchestration)\n\nYou are the **planner service** for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the right mix of agents and tools to produce complete answers.\n\nYour output is either:\n\n1. **One or more tool/agent calls** (when more info is required), or  \n2. **A final assistant message** (when you can answer without further tools).\n\n> **Run-until-done.** Keep planning and invoking tools until no additional tool calls are needed. When the next best action is to respond, stop and return a final assistant message.\n\n---\n\n## Capabilities\n\n- Analyze user intent and required data domains\n- Route requests to specialized agents (SQL, Graph)\n- Coordinate **sequential** and **parallel** tool calls\n- Combine multi-agent outputs into a unified answer\n- Provide direct answers for general questions\n- If tools are chosen: provide a **rich and clean context** for the agents. **Do not** write raw SQL or Gremlin. Instead, fill the `query` field with concise **instructions + context** that enables the agent to craft the precise query. For compound requests (multiple tools), each call’s context should include only what that agent needs.\n\n---\n\n## Agent Routing Guidelines\n\n### SQL Agent\nUse SQL for:\n- Account performance and sales metrics\n- Contact lists and CRM tables\n- Trend analysis and aggregations\n\n### Graph Agent\nUse Graph for SOWs & relationships:\n- SOWs for an account\n- Accounts with similar/related SOWs\n- Filtering SOWs by `offering`, tags, properties\n- Relationship questions (account level)\n- Account hierarchy / org structure\n\n### Direct Response\n- General knowledge not tied to proprietary data\n- Clarifications that require no tool calls\n\n---\n\n## Concurrency & Dependency Rules\n\n- **Parallel allowed:** Call multiple tools **at the same time** only when the calls are **independent** and the final answer is a simple merge.\n- **Sequential required:** When a later step **depends on outputs** from an earlier step, call the upstream tool **first**, wait for its result, then issue the downstream call with those outputs.\n- **Default stance:** If in doubt, prefer **sequential**.\n\n**Decision checklist:**\n1. Does Tool B need values produced by Tool A? → **Sequential** (A → B)  \n2. Can Tools A and B run on user-provided parameters alone? → **Parallel**  \n3. Will one tool’s result change the scope/filters of another? → **Sequential**\n\n---\n\n## State & Working Context\n\nMaintain a lightweight working context across steps (e.g., `discovered_accounts`, `selected_offering`, `time_range`). Use this context to parameterize later tool calls. Do **not** conflate context with `accounts_mentioned` (see below).\n\n---\n\n## Account Extraction Requirement (Mandatory)\n\nFor **every** agent/tool call (SQL or Graph), extract account names or aliases explicitly mentioned in the user query and include them as:\n\n```json\n\"accounts_mentioned\": [\"<Account A>\", \"<Account B>\"]\n```\n\n- If the user’s query is generic (e.g., “across all accounts”), set `accounts_mentioned` to `null`.\n- When passing **discovered** accounts from a prior step, include them in a **separate** argument field (e.g., `accounts_filter`)—do **not** mix them into `accounts_mentioned` unless the user originally said them.\n\n---\n\n## Tool/Agent Call Contract\n\nEmit each tool call as a single object:\n\n```json\n{\n  \"tool_name\": \"<agent_or_tool_name>\",\n  \"arguments\": {\n    \"query\": \"Detailed, context-encapsulated instructions that enable the agent to craft a precise query. May include knowledge discovered in previous steps.\",\n    \"bindings\": { \"<param>\": \"<value>\" },\n    \"accounts_mentioned\": [\"…\"]\n  }\n}\n```\n\n> Typical `tool_name` values here are **`graph_agent`** and **`sql_agent`** (you call the agents; they will call their underlying tools like `graph.query` or the SQL executor).\n\n**Rules**\n- **Parameterize** all user inputs; never inline values into raw query strings.\n- If a later step uses outputs from an earlier call, pass them in appropriately named arguments (e.g., `accounts_filter`, `ids`, `offering`).\n\n---\n\n## Orchestration Patterns\n\n### A) **Sequential (dependency present)**\n\n**User:** “Accounts that have SOWs similar to Microsoft’s AI Chatbot engagements (offering: ai_chatbot). And then from SQL get the **account contacts** (Sales).”\n\n**Step 1 — Graph (discover related accounts)**\n\n```json\n{\n  \"tool_name\": \"graph_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Find accounts with SOWs similar to the target account's ai_chatbot engagements. Input: Target account = Microsoft Corporation; Offering filter = ai_chatbot. Output: A small, deduped list of related account names (and ids if available) suitable to hand off to SQL for contact lookup.\",\n    \"bindings\": { \"name\": \"Microsoft Corporation\", \"offering\": \"ai_chatbot\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n*Planner saves returned account names as `discovered_accounts`.*\n\n**Step 2 — SQL (use Graph outputs to fetch Sales contacts)**\n\n```json\n{\n  \"tool_name\": \"sql_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Get contacts for the discovered accounts. Emphasize Sales/GTMS roles if available; otherwise return all contacts. Sort by account name, then last name, first name. Limit 100.\",\n    \"bindings\": { \"accounts_filter\": [\"<from discovered_accounts>\"], \"department\": \"Sales\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n**Step 3 — Synthesize** a final answer combining Graph (which accounts) + SQL (Sales contacts).\n\n### B) **Parallel (independent)**\n\n**User:** “Show the top-5 accounts by 2024 revenue, and also list accounts with more than 3 active SOWs.”\n\n- Revenue rankings (SQL) and SOW counts (Graph) do **not** depend on each other → you **may** issue both tool calls in the same planning turn.\n- Merge results and respond.\n\n---\n\n## Planning Loop (Run-until-Done)\n\n1. **Analyze** the request → identify intents, data sources, and dependencies  \n2. **Choose** next action: Graph, SQL, or direct response  \n3. **Extract** `accounts_mentioned` from the user’s text  \n4. **Invoke** one or more tools (parallel **only** if independent)  \n5. **Append** each planner reply and each injection to the conversation; **update context** with outputs (e.g., `discovered_accounts`)  \n6. If more info is needed, **repeat**; else **finalize** with an assistant message\n\n**Termination:** Stop when the next best action is to answer without further tool calls.\n\n---\n\n## Response Quality\n\n- Produce complete, accurate responses\n- Maintain context across steps\n- Explain methodology when useful\n- Offer follow-ups and next actions"
+    },
+    {
+      "role": "user",
+      "content": "Accounts that have SOWs similar to Microsoft's AI Chatbot engagements (i think the offer name is ai_chatbot) and then a way to contact the related account contacts"
+    },
+    {
+      "role": "assistant",
+      "content": "### Its agent requests\n- **Agent**: `graph_agent`\n  - **Tool**: `graph_agent_function`\n    - **Arguments**: `{\n  \"query\": \"g.V().has('account','name',name).out('has_sow').hasLabel('sow').has('offering', offering).as('msft_sow').out('similar_to').has('offering', offering).as('sim_sow').in('has_sow').hasLabel('account').dedup().project('id','name','sow').by(id).by(values('name')).by(select('sim_sow').id())\",\n  \"bindings\": {\n    \"name\": \"Microsoft Corporation\",\n    \"offering\": \"ai_chatbot\"\n  }\n}`\n\n######Response from agents#######\n- **Agent**: `graph_agent`\n  - **Tool**: `graph_agent_function`\n    - **Summary**:\n      ```json\n{\n  \"success\": true,\n  \"row_count\": 2,\n  \"error\": null,\n  \"columns\": [\n    \"id\",\n    \"name\",\n    \"sow\"\n  ],\n  \"sample_rows\": [\n    {\n      \"id\": \"acc_salesforce\",\n      \"name\": \"Salesforce Inc\",\n      \"sow\": \"sow_salesforce_ai_chatbot_2023\"\n    },\n    {\n      \"id\": \"acc_google\",\n      \"name\": \"Google LLC\",\n      \"sow\": \"sow_google_ai_chatbot_2024\"\n    }\n  ]\n}\n      ```"
+    },
+    {
+      "role": "user",
+      "content": "Using the information above, continue the plan or provide the final answer."
+    },
+    {
+      "role": "assistant",
+      "content": "### Its agent requests\n- **Agent**: `sql_agent`\n  - **Tool**: `sql_agent_function`\n    - **Arguments**: `{\n  \"query\": \"SELECT a.name AS account_name,\\n       c.first_name,\\n       c.last_name,\\n       c.email\\nFROM contacts c\\nJOIN accounts a ON a.id = c.account_id\\nWHERE a.name IN ('Salesforce Inc', 'Google LLC')\\nORDER BY a.name, c.last_name, c.first_name\\nLIMIT 100;\"\n}`\n\n######Response from agents#######\n- **Agent**: `sql_agent`\n  - **Tool**: `sql_agent_function`\n    - **Summary**:\n      ```json\n{\n  \"success\": true,\n  \"row_count\": 8,\n  \"error\": null,\n  \"columns\": [\n    \"table\",\n    \"id\",\n    \"name\",\n    \"owner_email\",\n    \"created_at\",\n    \"updated_at\",\n    \"first_name\",\n    \"last_name\",\n    \"email\",\n    \"account_id\"\n  ],\n  \"sample_rows\": [\n    {\n      \"table\": \"accounts\",\n      \"id\": \"acc_salesforce\",\n      \"name\": \"Salesforce Inc\",\n      \"owner_email\": \"owner@salesforce.com\",\n      \"created_at\": \"2023-01-15\",\n      \"updated_at\": \"2024-09-21\",\n      \"first_name\": null,\n      \"last_name\": null,\n      \"email\": null,\n      \"account_id\": null\n    },\n    {\n      \"table\": \"accounts\",\n      \"id\": \"acc_microsoft\",\n      \"name\": \"Microsoft Corporation\",\n      \"owner_email\": \"owner@microsoft.com\",\n      \"created_at\": \"2023-02-20\",\n      \"updated_at\": \"2024-09-21\",\n      \"first_name\": null,\n      \"last_name\": null,\n      \"email\": null,\n      \"account_id\": null\n    },\n    {\n      \"table\": \"accounts\",\n      \"id\": \"acc_oracle\",\n      \"name\": \"Oracle Corporation\",\n      \"owner_email\": \"owner@oracle.com\",\n      \"created_at\": \"2023-03-10\",\n      \"updated_at\": \"2024-09-21\",\n      \"first_name\": null,\n      \"last_name\": null,\n      \"email\": null,\n      \"account_id\": null\n    },\n    {\n      \"table\": \"accounts\",\n      \"id\": \"acc_google\",\n      \"name\": \"Google LLC\",\n      \"owner_email\": \"owner@google.com\",\n      \"created_at\": \"2023-04-05\",\n      \"updated_at\": \"2024-09-21\",\n      \"first_name\": null,\n      \"last_name\": null,\n      \"email\": null,\n      \"account_id\": null\n    },\n    {\n      \"table\": \"contacts\",\n      \"id\": \"contact_001\",\n      \"name\": null,\n      \"owner_email\": null,\n      \"created_at\": null,\n      \"updated_at\": null,\n      \"first_name\": \"John\",\n      \"last_name\": \"Smith\",\n      \"email\": \"john.smith@salesforce.com\",\n      \"account_id\": \"acc_salesforce\"\n    },\n    {\n      \"table\": \"contacts\",\n      \"id\": \"contact_002\",\n      \"name\": null,\n      \"owner_email\": null,\n      \"created_at\": null,\n      \"updated_at\": null,\n      \"first_name\": \"Jane\",\n      \"last_name\": \"Doe\",\n      \"email\": \"jane.doe@microsoft.com\",\n      \"account_id\": \"acc_microsoft\"\n    },\n    {\n      \"table\": \"contacts\",\n      \"id\": \"contact_003\",\n      \"name\": null,\n      \"owner_email\": null,\n      \"created_at\": null,\n      \"updated_at\": null,\n      \"first_name\": \"Bob\",\n      \"last_name\": \"Johnson\",\n      \"email\": \"bob.johnson@oracle.com\",\n      \"account_id\": \"acc_oracle\"\n    },\n    {\n      \"table\": \"contacts\",\n      \"id\": \"contact_004\",\n      \"name\": null,\n      \"owner_email\": null,\n      \"created_at\": null,\n      \"updated_at\": null,\n      \"first_name\": \"Alice\",\n      \"last_name\": \"Williams\",\n      \"email\": \"alice.williams@google.com\",\n      \"account_id\": \"acc_google\"\n    }\n  ]\n}\n      ```"
+    },
+    {
+      "role": "user",
+      "content": "Using the information above, continue the plan or provide the final answer."
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "graph_agent",
+        "description": "Graph agent for querying relationships, connections, and account information from the knowledge graph",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "accounts_mentioned": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "query",
+            "accounts_mentioned"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "sql_agent",
+        "description": "SQL agent for querying sales data, revenue metrics, and business analytics from the Fabric Lakehouse",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "accounts_mentioned": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "query",
+            "accounts_mentioned"
+          ]
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto"
+}
+```
+
+### Planner Raw Response (Round 3)
+
+```json
+{
+  "id": "chatcmpl-CLDXrbeZKKqaH4IHttJpuouOvrlNT",
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "logprobs": null,
+      "message": {
+        "content": "Here are the accounts that have SOWs similar to Microsoft's AI Chatbot engagements (offering: ai_chatbot), along with contact information for those related accounts:\n\n**Accounts with Similar AI Chatbot SOWs:**\n- Salesforce Inc\n- Google LLC\n\n**Contact Information:**\n\n**Salesforce Inc**\n- John Smith — john.smith@salesforce.com\n\n**Google LLC**\n- Alice Williams — alice.williams@google.com\n\nIf you need additional contacts, details for other departments, or want to reach out to specific roles, let me know!",
+        "refusal": null,
+        "role": "assistant",
+        "annotations": [],
+        "audio": null,
+        "function_call": null,
+        "tool_calls": null
+      },
+      "content_filter_results": {
+        "hate": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "protected_material_code": {
+          "detected": false,
+          "filtered": false
+        },
+        "protected_material_text": {
+          "detected": false,
+          "filtered": false
+        },
+        "self_harm": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "sexual": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "violence": {
+          "filtered": false,
+          "severity": "safe"
+        }
+      }
+    }
+  ],
+  "created": 1759172991,
+  "model": "gpt-4.1-2025-04-14",
+  "object": "chat.completion",
+  "service_tier": null,
+  "system_fingerprint": "fp_4d7b201289",
+  "usage": {
+    "completion_tokens": 116,
+    "prompt_tokens": 2980,
+    "total_tokens": 3096,
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    },
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 1920
+    }
+  },
+  "prompt_filter_results": [
+    {
+      "prompt_index": 0,
+      "content_filter_results": {
+        "hate": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "jailbreak": {
+          "filtered": false,
+          "detected": false
+        },
+        "self_harm": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "sexual": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "violence": {
+          "filtered": false,
+          "severity": "safe"
+        }
+      }
+    }
+  ]
+}
+```
+
+### Planner Assistant Content (Round 3)
+
+Here are the accounts that have SOWs similar to Microsoft's AI Chatbot engagements (offering: ai_chatbot), along with contact information for those related accounts:
+
+**Accounts with Similar AI Chatbot SOWs:**
+- Salesforce Inc
+- Google LLC
+
+**Contact Information:**
+
+**Salesforce Inc**
+- John Smith — john.smith@salesforce.com
+
+**Google LLC**
+- Alice Williams — alice.williams@google.com
+
+If you need additional contacts, details for other departments, or want to reach out to specific roles, let me know!
+
+## Final Answer
+
+Here are the accounts that have SOWs similar to Microsoft's AI Chatbot engagements (offering: ai_chatbot), along with contact information for those related accounts:
+
+**Accounts with Similar AI Chatbot SOWs:**
+- Salesforce Inc
+- Google LLC
+
+**Contact Information:**
+
+**Salesforce Inc**
+- John Smith — john.smith@salesforce.com
+
+**Google LLC**
+- Alice Williams — alice.williams@google.com
+
+If you need additional contacts, details for other departments, or want to reach out to specific roles, let me know!
+
+---
+
+## Query: All sales
+
+### Planner Request (Round 1)
+
+```json
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "# Planner Service System Prompt (Parallel + Sequential Orchestration)\n\nYou are the **planner service** for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the right mix of agents and tools to produce complete answers.\n\nYour output is either:\n\n1. **One or more tool/agent calls** (when more info is required), or  \n2. **A final assistant message** (when you can answer without further tools).\n\n> **Run-until-done.** Keep planning and invoking tools until no additional tool calls are needed. When the next best action is to respond, stop and return a final assistant message.\n\n---\n\n## Capabilities\n\n- Analyze user intent and required data domains\n- Route requests to specialized agents (SQL, Graph)\n- Coordinate **sequential** and **parallel** tool calls\n- Combine multi-agent outputs into a unified answer\n- Provide direct answers for general questions\n- If tools are chosen: provide a **rich and clean context** for the agents. **Do not** write raw SQL or Gremlin. Instead, fill the `query` field with concise **instructions + context** that enables the agent to craft the precise query. For compound requests (multiple tools), each call’s context should include only what that agent needs.\n\n---\n\n## Agent Routing Guidelines\n\n### SQL Agent\nUse SQL for:\n- Account performance and sales metrics\n- Contact lists and CRM tables\n- Trend analysis and aggregations\n\n### Graph Agent\nUse Graph for SOWs & relationships:\n- SOWs for an account\n- Accounts with similar/related SOWs\n- Filtering SOWs by `offering`, tags, properties\n- Relationship questions (account level)\n- Account hierarchy / org structure\n\n### Direct Response\n- General knowledge not tied to proprietary data\n- Clarifications that require no tool calls\n\n---\n\n## Concurrency & Dependency Rules\n\n- **Parallel allowed:** Call multiple tools **at the same time** only when the calls are **independent** and the final answer is a simple merge.\n- **Sequential required:** When a later step **depends on outputs** from an earlier step, call the upstream tool **first**, wait for its result, then issue the downstream call with those outputs.\n- **Default stance:** If in doubt, prefer **sequential**.\n\n**Decision checklist:**\n1. Does Tool B need values produced by Tool A? → **Sequential** (A → B)  \n2. Can Tools A and B run on user-provided parameters alone? → **Parallel**  \n3. Will one tool’s result change the scope/filters of another? → **Sequential**\n\n---\n\n## State & Working Context\n\nMaintain a lightweight working context across steps (e.g., `discovered_accounts`, `selected_offering`, `time_range`). Use this context to parameterize later tool calls. Do **not** conflate context with `accounts_mentioned` (see below).\n\n---\n\n## Account Extraction Requirement (Mandatory)\n\nFor **every** agent/tool call (SQL or Graph), extract account names or aliases explicitly mentioned in the user query and include them as:\n\n```json\n\"accounts_mentioned\": [\"<Account A>\", \"<Account B>\"]\n```\n\n- If the user’s query is generic (e.g., “across all accounts”), set `accounts_mentioned` to `null`.\n- When passing **discovered** accounts from a prior step, include them in a **separate** argument field (e.g., `accounts_filter`)—do **not** mix them into `accounts_mentioned` unless the user originally said them.\n\n---\n\n## Tool/Agent Call Contract\n\nEmit each tool call as a single object:\n\n```json\n{\n  \"tool_name\": \"<agent_or_tool_name>\",\n  \"arguments\": {\n    \"query\": \"Detailed, context-encapsulated instructions that enable the agent to craft a precise query. May include knowledge discovered in previous steps.\",\n    \"bindings\": { \"<param>\": \"<value>\" },\n    \"accounts_mentioned\": [\"…\"]\n  }\n}\n```\n\n> Typical `tool_name` values here are **`graph_agent`** and **`sql_agent`** (you call the agents; they will call their underlying tools like `graph.query` or the SQL executor).\n\n**Rules**\n- **Parameterize** all user inputs; never inline values into raw query strings.\n- If a later step uses outputs from an earlier call, pass them in appropriately named arguments (e.g., `accounts_filter`, `ids`, `offering`).\n\n---\n\n## Orchestration Patterns\n\n### A) **Sequential (dependency present)**\n\n**User:** “Accounts that have SOWs similar to Microsoft’s AI Chatbot engagements (offering: ai_chatbot). And then from SQL get the **account contacts** (Sales).”\n\n**Step 1 — Graph (discover related accounts)**\n\n```json\n{\n  \"tool_name\": \"graph_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Find accounts with SOWs similar to the target account's ai_chatbot engagements. Input: Target account = Microsoft Corporation; Offering filter = ai_chatbot. Output: A small, deduped list of related account names (and ids if available) suitable to hand off to SQL for contact lookup.\",\n    \"bindings\": { \"name\": \"Microsoft Corporation\", \"offering\": \"ai_chatbot\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n*Planner saves returned account names as `discovered_accounts`.*\n\n**Step 2 — SQL (use Graph outputs to fetch Sales contacts)**\n\n```json\n{\n  \"tool_name\": \"sql_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Get contacts for the discovered accounts. Emphasize Sales/GTMS roles if available; otherwise return all contacts. Sort by account name, then last name, first name. Limit 100.\",\n    \"bindings\": { \"accounts_filter\": [\"<from discovered_accounts>\"], \"department\": \"Sales\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n**Step 3 — Synthesize** a final answer combining Graph (which accounts) + SQL (Sales contacts).\n\n### B) **Parallel (independent)**\n\n**User:** “Show the top-5 accounts by 2024 revenue, and also list accounts with more than 3 active SOWs.”\n\n- Revenue rankings (SQL) and SOW counts (Graph) do **not** depend on each other → you **may** issue both tool calls in the same planning turn.\n- Merge results and respond.\n\n---\n\n## Planning Loop (Run-until-Done)\n\n1. **Analyze** the request → identify intents, data sources, and dependencies  \n2. **Choose** next action: Graph, SQL, or direct response  \n3. **Extract** `accounts_mentioned` from the user’s text  \n4. **Invoke** one or more tools (parallel **only** if independent)  \n5. **Append** each planner reply and each injection to the conversation; **update context** with outputs (e.g., `discovered_accounts`)  \n6. If more info is needed, **repeat**; else **finalize** with an assistant message\n\n**Termination:** Stop when the next best action is to answer without further tool calls.\n\n---\n\n## Response Quality\n\n- Produce complete, accurate responses\n- Maintain context across steps\n- Explain methodology when useful\n- Offer follow-ups and next actions"
     },
     {
       "role": "user",
@@ -1476,11 +1467,11 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
 }
 ```
 
-### Planner Raw Response (Turn 1)
+### Planner Raw Response (Round 1)
 
 ```json
 {
-  "id": "chatcmpl-CJi90ReAc0R7DTcTg39GLPunb4Nev",
+  "id": "chatcmpl-CLDXsXMqlOUgqqm6WAz2YNWbPzLVx",
   "choices": [
     {
       "finish_reason": "tool_calls",
@@ -1495,9 +1486,9 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
         "function_call": null,
         "tool_calls": [
           {
-            "id": "call_35ClLcShQR6JyiwFTmlvX8Rf",
+            "id": "call_Dan3YHCcKTbLFYBHH0aHNEJQ",
             "function": {
-              "arguments": "{\"query\":\"Retrieve all sales data across all accounts.\",\"accounts_mentioned\":null}",
+              "arguments": "{\"query\":\"Retrieve a comprehensive list of all sales contacts across all accounts. Include contact name, account name, role/department, and contact details. Sort by account name, then last name, first name. Limit to 200 results for readability.\",\"accounts_mentioned\":null}",
               "name": "sql_agent"
             },
             "type": "function"
@@ -1507,15 +1498,15 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
       "content_filter_results": {}
     }
   ],
-  "created": 1758813958,
+  "created": 1759172992,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
-  "system_fingerprint": "fp_c79ab13e31",
+  "system_fingerprint": "fp_4d7b201289",
   "usage": {
-    "completion_tokens": 27,
-    "prompt_tokens": 646,
-    "total_tokens": 673,
+    "completion_tokens": 66,
+    "prompt_tokens": 1637,
+    "total_tokens": 1703,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -1524,7 +1515,7 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
     },
     "prompt_tokens_details": {
       "audio_tokens": 0,
-      "cached_tokens": 0
+      "cached_tokens": 1536
     }
   },
   "prompt_filter_results": [
@@ -1557,11 +1548,11 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
 }
 ```
 
-### Planner Tool Calls (Turn 1)
+### Planner Tool Calls (Round 1)
 
 - Tool Call → sql_agent
 
-  Arguments: {"query":"Retrieve all sales data across all accounts.","accounts_mentioned":null}
+  Arguments: {"query":"Retrieve a comprehensive list of all sales contacts across all accounts. Include contact name, account name, role/department, and contact details. Sort by account name, then last name, first name. Limit to 200 results for readability.","accounts_mentioned":null}
 
 
 ### Agent Tools Loaded for sql_agent: ['sql_agent_function']
@@ -1573,11 +1564,11 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
   "messages": [
     {
       "role": "system",
-      "content": "# SQL Agent System Prompt\n\nYou are a specialized SQL agent for a Salesforce Q&A chatbot. Your role is to help users query and analyze Salesforce data using SQL.\n\n## Your Capabilities\n- Execute SQL queries against Salesforce data\n- Analyze account performance, sales data, and customer information\n- Generate reports and insights from Salesforce data\n- Help users understand data relationships and trends\n\n## Guidelines\n1. **Always validate user permissions** before executing queries\n2. **Use parameterized queries** to prevent SQL injection\n3. **Limit result sets** to reasonable sizes (default: 100 rows)\n4. **Explain your findings** in business-friendly language\n5. **Suggest follow-up questions** when appropriate\n\n## Query Types You Handle\n- Account performance analysis\n- Sales pipeline reports\n- Customer segmentation queries\n- Opportunity tracking\n- Activity and engagement metrics\n\n## Response Format\nWhen executing SQL queries:\n1. Validate the request and user permissions\n2. Execute the appropriate SQL query\n3. Format results in a clear, readable format\n4. Provide business insights and explanations\n5. Suggest related queries or follow-up actions\n\n## Error Handling\n- If a query fails, explain the issue in user-friendly terms\n- Suggest alternative approaches or corrections\n- Never expose sensitive system information\n\nRemember: Your goal is to make Salesforce data accessible and actionable for business users.\n"
+      "content": "# SQL Agent System Prompt (with Data Model)\n\nYou are a specialized **SQL agent** for a Salesforce Q&A chatbot. Your role is to query and analyze Salesforce-style data using SQL and return insights.\n\nYour output is either: (1) a parameterized SQL tool call\n\n---\n\n## Capabilities\n\n* Execute SQL queries against Salesforce-like tables\n* Analyze account performance, sales/opportunities, and contacts\n\n---\n\n## Data Model (Authoritative)\n\nThe development dataset exposes three logical tables with the following columns. Use these names in queries.\n\n### 1) `accounts`\n\n* `id` (PK)\n* `name`\n* `owner_email`\n* `created_at`\n* `updated_at`\n\n### 2) `opportunities`\n\n(Also referred to by users as **sales** or **opps** — treat as the same table)\n\n* `id` (PK)\n* `name`\n* `amount` (numeric)\n* `stage` (e.g., `Closed Won`, `Proposal`, `Negotiation`)\n* `close_date` (ISO string)\n* `account_name` (denormalized helper)\n* `account_id` (FK → `accounts.id`)\n\n### 3) `contacts`\n\n* `id` (PK)\n* `first_name`\n* `last_name`\n* `email`\n* `account_id` (FK → `accounts.id`)\n\n#### Relationships\n\n* `opportunities.account_id = accounts.id`\n* `contacts.account_id = accounts.id`\n\n---\n\n## Query Recipes (Parameterized)\n\n### A) Contacts for a set of accounts (e.g., from Graph results)\n\n```sql\nSELECT a.name AS account_name,\n       c.first_name,\n       c.last_name,\n       c.email\nFROM contacts c\nJOIN accounts a ON a.id = c.account_id\nWHERE a.name IN (:accounts)\nORDER BY a.name, c.last_name, c.first_name\nLIMIT :limit;\n```\n### B) Opportunities for specific accounts, by stage and date window\n\n```sql\nSELECT a.name AS account_name,\n       o.id,\n       o.name,\n       o.amount,\n       o.stage,\n       o.close_date\nFROM opportunities o\nJOIN accounts a ON a.id = o.account_id\nWHERE a.name IN (:accounts)\n  AND (:stage IS NULL OR o.stage = :stage)\n  AND (:from IS NULL  OR o.close_date >= :from)\n  AND (:to   IS NULL  OR o.close_date <  :to)\nORDER BY o.close_date DESC\nLIMIT :limit;\n```\n### C) Revenue by account (Closed Won only)\n\n```sql\nSELECT a.name AS account_name,\n       SUM(o.amount) AS total_revenue\nFROM opportunities o\nJOIN accounts a ON a.id = o.account_id\nWHERE o.stage = 'Closed Won'\n  AND (:accounts_is_all = 1 OR a.name IN (:accounts))\nGROUP BY a.name\nORDER BY total_revenue DESC\nLIMIT :limit;\n```\n\n### D) Account directory (owners)\n\n```sql\nSELECT id,\n       name,\n       owner_email,\n       created_at,\n       updated_at\nFROM accounts\nWHERE (:accounts_is_all = 1 OR name IN (:accounts))\nORDER BY updated_at DESC\nLIMIT :limit;\n```\n---\n\n## Response Format\n\n1. Run a **parameterized** query.\n2. Return table.\n---\n\n## Defaults & Limits\n\n* `LIMIT 100` unless otherwise specified.\n* Reasonable defaults for ordering (`close_date` desc, `amount` desc).\n* Dates expected as ISO strings (YYYY-MM-DD)."
     },
     {
       "role": "user",
-      "content": "Retrieve all sales data across all accounts."
+      "content": "Retrieve a comprehensive list of all sales contacts across all accounts. Include contact name, account name, role/department, and contact details. Sort by account name, then last name, first name. Limit to 200 results for readability."
     }
   ],
   "tools": [
@@ -1614,7 +1605,7 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
 
 ```json
 {
-  "id": "chatcmpl-CJi91VlOjZTh0drTNzSf99eDkEVPy",
+  "id": "chatcmpl-CLDXukdTEkOo5x4dN7rioDxKDoNFL",
   "choices": [
     {
       "finish_reason": "tool_calls",
@@ -1629,9 +1620,9 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
         "function_call": null,
         "tool_calls": [
           {
-            "id": "call_HsZqTW6NsZOJDN0wBR6zPaTy",
+            "id": "call_CV0QeYMyntLROWs7WSdL6hSC",
             "function": {
-              "arguments": "{\"query\":\"SELECT AccountId, AccountName, OpportunityId, OpportunityName, StageName, Amount, CloseDate FROM Opportunities ORDER BY CloseDate DESC\",\"limit\":100}",
+              "arguments": "{\"query\":\"SELECT a.name AS account_name,\\n       c.first_name,\\n       c.last_name,\\n       c.email\\nFROM contacts c\\nJOIN accounts a ON a.id = c.account_id\\nORDER BY a.name, c.last_name, c.first_name\\nLIMIT 200;\",\"limit\":200}",
               "name": "sql_agent_function"
             },
             "type": "function"
@@ -1641,15 +1632,15 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
       "content_filter_results": {}
     }
   ],
-  "created": 1758813959,
+  "created": 1759172994,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
-  "system_fingerprint": "fp_9ab7d013ff",
+  "system_fingerprint": "fp_4d7b201289",
   "usage": {
-    "completion_tokens": 46,
-    "prompt_tokens": 363,
-    "total_tokens": 409,
+    "completion_tokens": 75,
+    "prompt_tokens": 852,
+    "total_tokens": 927,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -1670,8 +1661,8 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
           "severity": "safe"
         },
         "jailbreak": {
-          "detected": false,
-          "filtered": false
+          "filtered": false,
+          "detected": false
         },
         "self_harm": {
           "filtered": false,
@@ -1695,7 +1686,7 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
 
 - Tool Call → sql_agent_function
 
-  Arguments: {"query":"SELECT AccountId, AccountName, OpportunityId, OpportunityName, StageName, Amount, CloseDate FROM Opportunities ORDER BY CloseDate DESC","limit":100}
+  Arguments: {"query":"SELECT a.name AS account_name,\n       c.first_name,\n       c.last_name,\n       c.email\nFROM contacts c\nJOIN accounts a ON a.id = c.account_id\nORDER BY a.name, c.last_name, c.first_name\nLIMIT 200;","limit":200}
 
 
 ### Executed SQL Tool: sql_agent_function
@@ -1703,46 +1694,118 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
 ```json
 {
   "success": true,
-  "row_count": 3,
+  "row_count": 8,
   "error": null,
   "sample_rows": [
     {
-      "id": "opp_001",
-      "name": "Salesforce CRM Upgrade",
-      "amount": 2500000.0,
-      "stage": "Closed Won",
-      "close_date": "2024-03-15",
-      "account_name": "Salesforce Inc",
+      "table": "accounts",
+      "id": "acc_salesforce",
+      "name": "Salesforce Inc",
+      "owner_email": "owner@salesforce.com",
+      "created_at": "2023-01-15",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_microsoft",
+      "name": "Microsoft Corporation",
+      "owner_email": "owner@microsoft.com",
+      "created_at": "2023-02-20",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_oracle",
+      "name": "Oracle Corporation",
+      "owner_email": "owner@oracle.com",
+      "created_at": "2023-03-10",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_google",
+      "name": "Google LLC",
+      "owner_email": "owner@google.com",
+      "created_at": "2023-04-05",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "contacts",
+      "id": "contact_001",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "John",
+      "last_name": "Smith",
+      "email": "john.smith@salesforce.com",
       "account_id": "acc_salesforce"
     },
     {
-      "id": "opp_002",
-      "name": "Microsoft 365 Integration",
-      "amount": 1800000.0,
-      "stage": "Proposal",
-      "close_date": "2024-11-30",
-      "account_name": "Microsoft Corporation",
+      "table": "contacts",
+      "id": "contact_002",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Jane",
+      "last_name": "Doe",
+      "email": "jane.doe@microsoft.com",
       "account_id": "acc_microsoft"
     },
     {
-      "id": "opp_003",
-      "name": "Oracle Database Migration",
-      "amount": 3200000.0,
-      "stage": "Negotiation",
-      "close_date": "2024-12-15",
-      "account_name": "Oracle Corporation",
+      "table": "contacts",
+      "id": "contact_003",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Bob",
+      "last_name": "Johnson",
+      "email": "bob.johnson@oracle.com",
       "account_id": "acc_oracle"
+    },
+    {
+      "table": "contacts",
+      "id": "contact_004",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Alice",
+      "last_name": "Williams",
+      "email": "alice.williams@google.com",
+      "account_id": "acc_google"
     }
   ],
   "source": "sql",
-  "query": "SELECT AccountId, AccountName, OpportunityId, OpportunityName, StageName, Amount, CloseDate FROM Opportunities ORDER BY CloseDate DESC",
+  "query": "SELECT a.name AS account_name,\n       c.first_name,\n       c.last_name,\n       c.email\nFROM contacts c\nJOIN accounts a ON a.id = c.account_id\nORDER BY a.name, c.last_name, c.first_name\nLIMIT 200;",
   "columns": [
+    "table",
     "id",
     "name",
-    "amount",
-    "stage",
-    "close_date",
-    "account_name",
+    "owner_email",
+    "created_at",
+    "updated_at",
+    "first_name",
+    "last_name",
+    "email",
     "account_id"
   ]
 }
@@ -1755,7 +1818,7 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
 - **Agent**: `sql_agent`
   - **Tool**: `sql_agent_function`
     - **Arguments**: `{
-  "query": "SELECT AccountId, AccountName, OpportunityId, OpportunityName, StageName, Amount, CloseDate FROM Opportunities ORDER BY CloseDate DESC"
+  "query": "SELECT a.name AS account_name,\n       c.first_name,\n       c.last_name,\n       c.email\nFROM contacts c\nJOIN accounts a ON a.id = c.account_id\nORDER BY a.name, c.last_name, c.first_name\nLIMIT 200;"
 }`
 
 ######Response from agents#######
@@ -1765,58 +1828,130 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
       ```json
 {
   "success": true,
-  "row_count": 3,
+  "row_count": 8,
   "error": null,
   "columns": [
+    "table",
     "id",
     "name",
-    "amount",
-    "stage",
-    "close_date",
-    "account_name",
+    "owner_email",
+    "created_at",
+    "updated_at",
+    "first_name",
+    "last_name",
+    "email",
     "account_id"
   ],
   "sample_rows": [
     {
-      "id": "opp_001",
-      "name": "Salesforce CRM Upgrade",
-      "amount": 2500000.0,
-      "stage": "Closed Won",
-      "close_date": "2024-03-15",
-      "account_name": "Salesforce Inc",
+      "table": "accounts",
+      "id": "acc_salesforce",
+      "name": "Salesforce Inc",
+      "owner_email": "owner@salesforce.com",
+      "created_at": "2023-01-15",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_microsoft",
+      "name": "Microsoft Corporation",
+      "owner_email": "owner@microsoft.com",
+      "created_at": "2023-02-20",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_oracle",
+      "name": "Oracle Corporation",
+      "owner_email": "owner@oracle.com",
+      "created_at": "2023-03-10",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "accounts",
+      "id": "acc_google",
+      "name": "Google LLC",
+      "owner_email": "owner@google.com",
+      "created_at": "2023-04-05",
+      "updated_at": "2024-09-21",
+      "first_name": null,
+      "last_name": null,
+      "email": null,
+      "account_id": null
+    },
+    {
+      "table": "contacts",
+      "id": "contact_001",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "John",
+      "last_name": "Smith",
+      "email": "john.smith@salesforce.com",
       "account_id": "acc_salesforce"
     },
     {
-      "id": "opp_002",
-      "name": "Microsoft 365 Integration",
-      "amount": 1800000.0,
-      "stage": "Proposal",
-      "close_date": "2024-11-30",
-      "account_name": "Microsoft Corporation",
+      "table": "contacts",
+      "id": "contact_002",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Jane",
+      "last_name": "Doe",
+      "email": "jane.doe@microsoft.com",
       "account_id": "acc_microsoft"
     },
     {
-      "id": "opp_003",
-      "name": "Oracle Database Migration",
-      "amount": 3200000.0,
-      "stage": "Negotiation",
-      "close_date": "2024-12-15",
-      "account_name": "Oracle Corporation",
+      "table": "contacts",
+      "id": "contact_003",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Bob",
+      "last_name": "Johnson",
+      "email": "bob.johnson@oracle.com",
       "account_id": "acc_oracle"
+    },
+    {
+      "table": "contacts",
+      "id": "contact_004",
+      "name": null,
+      "owner_email": null,
+      "created_at": null,
+      "updated_at": null,
+      "first_name": "Alice",
+      "last_name": "Williams",
+      "email": "alice.williams@google.com",
+      "account_id": "acc_google"
     }
   ]
 }
       ```
 ```
 
-### Planner Final Request (Turn 2)
+### Planner Request (Round 2)
 
 ```json
 {
   "messages": [
     {
       "role": "system",
-      "content": "# Planner Service System Prompt\n\nYou are the planner service for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the appropriate combination of agents and tools to provide comprehensive answers.\n\n## Your Capabilities\n- Analyze user intent and determine required actions\n- Route requests to appropriate specialized agents (SQL, Graph)\n- Coordinate multi-step workflows\n- Combine results from multiple agents\n- Provide direct answers for general questions\n\n## Agent Routing Guidelines\n\n### SQL Agent\nRoute to SQL agent for:\n- Data analysis and reporting requests\n- Questions about account performance, sales metrics\n- Requests for specific data queries or reports\n- Trend analysis and statistical questions\n\n### Graph Agent  \nRoute to Graph agent for:\n- Relationship and connection questions\n- Account hierarchy and organizational structure\n- Partnership and collaboration inquiries\n- Network analysis and pattern discovery\n\n### Direct Response\nProvide direct answers for:\n- General knowledge questions not related to proprietary data.\n\n### Multiple Function selection\n- You may select 1 or more tools to call - depending on User question.\n- If user asks about sales data AND relationships, you can call both tools.\n\n\n## Account Extraction Requirement\nFor every agent/tool call (e.g., SQL or Graph agent), you MUST extract the list of account names or aliases explicitly mentioned in the user query. Add these as an array field `accounts_mentioned` (list of strings, or `null` if no accounts are mentioned) in the agent/tool call parameters. If the user query is generic (e.g., \"sum of sales across all accounts\"), set `accounts_mentioned` to `null`.\n\n## Planning Process\n1. **Analyze Request**: Understand user intent and required information\n2. **Determine Agents**: Select appropriate agents based on request type\n3. **Extract Accounts**: Identify and list all account names/aliases mentioned in the query (or set to `null` if none)\n4. **Plan Sequence**: Order agent calls for optimal workflow\n5. **Coordinate Execution**: Manage agent interactions and data flow\n6. **Synthesize Results**: Combine outputs into coherent response\n\n## Multi-Agent Workflows\nFor complex requests that need multiple agents:\n1. Start with broader context (Graph agent for relationships)\n2. Drill down to specific data (SQL agent for metrics)\n3. Combine insights from both perspectives\n4. Provide unified, actionable recommendations\n\n## Response Quality\n- Ensure responses are complete and accurate\n- Maintain conversation context across agent calls\n- Provide clear explanations of methodology\n- Suggest follow-up questions and actions\n\nRemember: Your goal is to provide the most comprehensive and useful response by intelligently orchestrating available agents and tools.\n"
+      "content": "# Planner Service System Prompt (Parallel + Sequential Orchestration)\n\nYou are the **planner service** for a Salesforce Q&A chatbot. Your role is to analyze user requests and orchestrate the right mix of agents and tools to produce complete answers.\n\nYour output is either:\n\n1. **One or more tool/agent calls** (when more info is required), or  \n2. **A final assistant message** (when you can answer without further tools).\n\n> **Run-until-done.** Keep planning and invoking tools until no additional tool calls are needed. When the next best action is to respond, stop and return a final assistant message.\n\n---\n\n## Capabilities\n\n- Analyze user intent and required data domains\n- Route requests to specialized agents (SQL, Graph)\n- Coordinate **sequential** and **parallel** tool calls\n- Combine multi-agent outputs into a unified answer\n- Provide direct answers for general questions\n- If tools are chosen: provide a **rich and clean context** for the agents. **Do not** write raw SQL or Gremlin. Instead, fill the `query` field with concise **instructions + context** that enables the agent to craft the precise query. For compound requests (multiple tools), each call’s context should include only what that agent needs.\n\n---\n\n## Agent Routing Guidelines\n\n### SQL Agent\nUse SQL for:\n- Account performance and sales metrics\n- Contact lists and CRM tables\n- Trend analysis and aggregations\n\n### Graph Agent\nUse Graph for SOWs & relationships:\n- SOWs for an account\n- Accounts with similar/related SOWs\n- Filtering SOWs by `offering`, tags, properties\n- Relationship questions (account level)\n- Account hierarchy / org structure\n\n### Direct Response\n- General knowledge not tied to proprietary data\n- Clarifications that require no tool calls\n\n---\n\n## Concurrency & Dependency Rules\n\n- **Parallel allowed:** Call multiple tools **at the same time** only when the calls are **independent** and the final answer is a simple merge.\n- **Sequential required:** When a later step **depends on outputs** from an earlier step, call the upstream tool **first**, wait for its result, then issue the downstream call with those outputs.\n- **Default stance:** If in doubt, prefer **sequential**.\n\n**Decision checklist:**\n1. Does Tool B need values produced by Tool A? → **Sequential** (A → B)  \n2. Can Tools A and B run on user-provided parameters alone? → **Parallel**  \n3. Will one tool’s result change the scope/filters of another? → **Sequential**\n\n---\n\n## State & Working Context\n\nMaintain a lightweight working context across steps (e.g., `discovered_accounts`, `selected_offering`, `time_range`). Use this context to parameterize later tool calls. Do **not** conflate context with `accounts_mentioned` (see below).\n\n---\n\n## Account Extraction Requirement (Mandatory)\n\nFor **every** agent/tool call (SQL or Graph), extract account names or aliases explicitly mentioned in the user query and include them as:\n\n```json\n\"accounts_mentioned\": [\"<Account A>\", \"<Account B>\"]\n```\n\n- If the user’s query is generic (e.g., “across all accounts”), set `accounts_mentioned` to `null`.\n- When passing **discovered** accounts from a prior step, include them in a **separate** argument field (e.g., `accounts_filter`)—do **not** mix them into `accounts_mentioned` unless the user originally said them.\n\n---\n\n## Tool/Agent Call Contract\n\nEmit each tool call as a single object:\n\n```json\n{\n  \"tool_name\": \"<agent_or_tool_name>\",\n  \"arguments\": {\n    \"query\": \"Detailed, context-encapsulated instructions that enable the agent to craft a precise query. May include knowledge discovered in previous steps.\",\n    \"bindings\": { \"<param>\": \"<value>\" },\n    \"accounts_mentioned\": [\"…\"]\n  }\n}\n```\n\n> Typical `tool_name` values here are **`graph_agent`** and **`sql_agent`** (you call the agents; they will call their underlying tools like `graph.query` or the SQL executor).\n\n**Rules**\n- **Parameterize** all user inputs; never inline values into raw query strings.\n- If a later step uses outputs from an earlier call, pass them in appropriately named arguments (e.g., `accounts_filter`, `ids`, `offering`).\n\n---\n\n## Orchestration Patterns\n\n### A) **Sequential (dependency present)**\n\n**User:** “Accounts that have SOWs similar to Microsoft’s AI Chatbot engagements (offering: ai_chatbot). And then from SQL get the **account contacts** (Sales).”\n\n**Step 1 — Graph (discover related accounts)**\n\n```json\n{\n  \"tool_name\": \"graph_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Find accounts with SOWs similar to the target account's ai_chatbot engagements. Input: Target account = Microsoft Corporation; Offering filter = ai_chatbot. Output: A small, deduped list of related account names (and ids if available) suitable to hand off to SQL for contact lookup.\",\n    \"bindings\": { \"name\": \"Microsoft Corporation\", \"offering\": \"ai_chatbot\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n*Planner saves returned account names as `discovered_accounts`.*\n\n**Step 2 — SQL (use Graph outputs to fetch Sales contacts)**\n\n```json\n{\n  \"tool_name\": \"sql_agent\",\n  \"arguments\": {\n    \"query\": \"Task: Get contacts for the discovered accounts. Emphasize Sales/GTMS roles if available; otherwise return all contacts. Sort by account name, then last name, first name. Limit 100.\",\n    \"bindings\": { \"accounts_filter\": [\"<from discovered_accounts>\"], \"department\": \"Sales\" },\n    \"accounts_mentioned\": [\"Microsoft Corporation\"]\n  }\n}\n```\n\n**Step 3 — Synthesize** a final answer combining Graph (which accounts) + SQL (Sales contacts).\n\n### B) **Parallel (independent)**\n\n**User:** “Show the top-5 accounts by 2024 revenue, and also list accounts with more than 3 active SOWs.”\n\n- Revenue rankings (SQL) and SOW counts (Graph) do **not** depend on each other → you **may** issue both tool calls in the same planning turn.\n- Merge results and respond.\n\n---\n\n## Planning Loop (Run-until-Done)\n\n1. **Analyze** the request → identify intents, data sources, and dependencies  \n2. **Choose** next action: Graph, SQL, or direct response  \n3. **Extract** `accounts_mentioned` from the user’s text  \n4. **Invoke** one or more tools (parallel **only** if independent)  \n5. **Append** each planner reply and each injection to the conversation; **update context** with outputs (e.g., `discovered_accounts`)  \n6. If more info is needed, **repeat**; else **finalize** with an assistant message\n\n**Termination:** Stop when the next best action is to answer without further tool calls.\n\n---\n\n## Response Quality\n\n- Produce complete, accurate responses\n- Maintain context across steps\n- Explain methodology when useful\n- Offer follow-ups and next actions"
     },
     {
       "role": "user",
@@ -1824,28 +1959,87 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
     },
     {
       "role": "assistant",
-      "content": "### Its agent requests\n- **Agent**: `sql_agent`\n  - **Tool**: `sql_agent_function`\n    - **Arguments**: `{\n  \"query\": \"SELECT AccountId, AccountName, OpportunityId, OpportunityName, StageName, Amount, CloseDate FROM Opportunities ORDER BY CloseDate DESC\"\n}`\n\n######Response from agents#######\n- **Agent**: `sql_agent`\n  - **Tool**: `sql_agent_function`\n    - **Summary**:\n      ```json\n{\n  \"success\": true,\n  \"row_count\": 3,\n  \"error\": null,\n  \"columns\": [\n    \"id\",\n    \"name\",\n    \"amount\",\n    \"stage\",\n    \"close_date\",\n    \"account_name\",\n    \"account_id\"\n  ],\n  \"sample_rows\": [\n    {\n      \"id\": \"opp_001\",\n      \"name\": \"Salesforce CRM Upgrade\",\n      \"amount\": 2500000.0,\n      \"stage\": \"Closed Won\",\n      \"close_date\": \"2024-03-15\",\n      \"account_name\": \"Salesforce Inc\",\n      \"account_id\": \"acc_salesforce\"\n    },\n    {\n      \"id\": \"opp_002\",\n      \"name\": \"Microsoft 365 Integration\",\n      \"amount\": 1800000.0,\n      \"stage\": \"Proposal\",\n      \"close_date\": \"2024-11-30\",\n      \"account_name\": \"Microsoft Corporation\",\n      \"account_id\": \"acc_microsoft\"\n    },\n    {\n      \"id\": \"opp_003\",\n      \"name\": \"Oracle Database Migration\",\n      \"amount\": 3200000.0,\n      \"stage\": \"Negotiation\",\n      \"close_date\": \"2024-12-15\",\n      \"account_name\": \"Oracle Corporation\",\n      \"account_id\": \"acc_oracle\"\n    }\n  ]\n}\n      ```"
+      "content": "### Its agent requests\n- **Agent**: `sql_agent`\n  - **Tool**: `sql_agent_function`\n    - **Arguments**: `{\n  \"query\": \"SELECT a.name AS account_name,\\n       c.first_name,\\n       c.last_name,\\n       c.email\\nFROM contacts c\\nJOIN accounts a ON a.id = c.account_id\\nORDER BY a.name, c.last_name, c.first_name\\nLIMIT 200;\"\n}`\n\n######Response from agents#######\n- **Agent**: `sql_agent`\n  - **Tool**: `sql_agent_function`\n    - **Summary**:\n      ```json\n{\n  \"success\": true,\n  \"row_count\": 8,\n  \"error\": null,\n  \"columns\": [\n    \"table\",\n    \"id\",\n    \"name\",\n    \"owner_email\",\n    \"created_at\",\n    \"updated_at\",\n    \"first_name\",\n    \"last_name\",\n    \"email\",\n    \"account_id\"\n  ],\n  \"sample_rows\": [\n    {\n      \"table\": \"accounts\",\n      \"id\": \"acc_salesforce\",\n      \"name\": \"Salesforce Inc\",\n      \"owner_email\": \"owner@salesforce.com\",\n      \"created_at\": \"2023-01-15\",\n      \"updated_at\": \"2024-09-21\",\n      \"first_name\": null,\n      \"last_name\": null,\n      \"email\": null,\n      \"account_id\": null\n    },\n    {\n      \"table\": \"accounts\",\n      \"id\": \"acc_microsoft\",\n      \"name\": \"Microsoft Corporation\",\n      \"owner_email\": \"owner@microsoft.com\",\n      \"created_at\": \"2023-02-20\",\n      \"updated_at\": \"2024-09-21\",\n      \"first_name\": null,\n      \"last_name\": null,\n      \"email\": null,\n      \"account_id\": null\n    },\n    {\n      \"table\": \"accounts\",\n      \"id\": \"acc_oracle\",\n      \"name\": \"Oracle Corporation\",\n      \"owner_email\": \"owner@oracle.com\",\n      \"created_at\": \"2023-03-10\",\n      \"updated_at\": \"2024-09-21\",\n      \"first_name\": null,\n      \"last_name\": null,\n      \"email\": null,\n      \"account_id\": null\n    },\n    {\n      \"table\": \"accounts\",\n      \"id\": \"acc_google\",\n      \"name\": \"Google LLC\",\n      \"owner_email\": \"owner@google.com\",\n      \"created_at\": \"2023-04-05\",\n      \"updated_at\": \"2024-09-21\",\n      \"first_name\": null,\n      \"last_name\": null,\n      \"email\": null,\n      \"account_id\": null\n    },\n    {\n      \"table\": \"contacts\",\n      \"id\": \"contact_001\",\n      \"name\": null,\n      \"owner_email\": null,\n      \"created_at\": null,\n      \"updated_at\": null,\n      \"first_name\": \"John\",\n      \"last_name\": \"Smith\",\n      \"email\": \"john.smith@salesforce.com\",\n      \"account_id\": \"acc_salesforce\"\n    },\n    {\n      \"table\": \"contacts\",\n      \"id\": \"contact_002\",\n      \"name\": null,\n      \"owner_email\": null,\n      \"created_at\": null,\n      \"updated_at\": null,\n      \"first_name\": \"Jane\",\n      \"last_name\": \"Doe\",\n      \"email\": \"jane.doe@microsoft.com\",\n      \"account_id\": \"acc_microsoft\"\n    },\n    {\n      \"table\": \"contacts\",\n      \"id\": \"contact_003\",\n      \"name\": null,\n      \"owner_email\": null,\n      \"created_at\": null,\n      \"updated_at\": null,\n      \"first_name\": \"Bob\",\n      \"last_name\": \"Johnson\",\n      \"email\": \"bob.johnson@oracle.com\",\n      \"account_id\": \"acc_oracle\"\n    },\n    {\n      \"table\": \"contacts\",\n      \"id\": \"contact_004\",\n      \"name\": null,\n      \"owner_email\": null,\n      \"created_at\": null,\n      \"updated_at\": null,\n      \"first_name\": \"Alice\",\n      \"last_name\": \"Williams\",\n      \"email\": \"alice.williams@google.com\",\n      \"account_id\": \"acc_google\"\n    }\n  ]\n}\n      ```"
     },
     {
       "role": "user",
-      "content": "Using the information above, provide the final answer to the user."
+      "content": "Using the information above, continue the plan or provide the final answer."
     }
-  ]
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "graph_agent",
+        "description": "Graph agent for querying relationships, connections, and account information from the knowledge graph",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "accounts_mentioned": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "query",
+            "accounts_mentioned"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "sql_agent",
+        "description": "SQL agent for querying sales data, revenue metrics, and business analytics from the Fabric Lakehouse",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "accounts_mentioned": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "query",
+            "accounts_mentioned"
+          ]
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto"
 }
 ```
 
-### Planner Final Raw Response (Turn 2)
+### Planner Raw Response (Round 2)
 
 ```json
 {
-  "id": "chatcmpl-CJi92GpFV894oqMipH20820KfWQrM",
+  "id": "chatcmpl-CLDXvNiPcUVdGY0eNuoBGBPeB1ZEr",
   "choices": [
     {
       "finish_reason": "stop",
       "index": 0,
       "logprobs": null,
       "message": {
-        "content": "Here are the most recent sales opportunities across all accounts:\n\n1. **Salesforce Inc**\n   - Opportunity: Salesforce CRM Upgrade\n   - Amount: $2,500,000\n   - Stage: Closed Won\n   - Close Date: 2024-03-15\n\n2. **Microsoft Corporation**\n   - Opportunity: Microsoft 365 Integration\n   - Amount: $1,800,000\n   - Stage: Proposal\n   - Close Date: 2024-11-30\n\n3. **Oracle Corporation**\n   - Opportunity: Oracle Database Migration\n   - Amount: $3,200,000\n   - Stage: Negotiation\n   - Close Date: 2024-12-15\n\nIf you need more details or a summary by account, stage, or time period, let me know!",
+        "content": "Here are the sales contacts across all accounts, based on the latest available data:\n\n**Salesforce Inc**\n- John Smith (john.smith@salesforce.com)\n\n**Microsoft Corporation**\n- Jane Doe (jane.doe@microsoft.com)\n\n**Oracle Corporation**\n- Bob Johnson (bob.johnson@oracle.com)\n\n**Google LLC**\n- Alice Williams (alice.williams@google.com)\n\nIf you need more details or contacts from additional accounts, let me know!",
         "refusal": null,
         "role": "assistant",
         "annotations": [],
@@ -1881,15 +2075,15 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
       }
     }
   ],
-  "created": 1758813960,
+  "created": 1759172995,
   "model": "gpt-4.1-2025-04-14",
   "object": "chat.completion",
   "service_tier": null,
-  "system_fingerprint": "fp_c79ab13e31",
+  "system_fingerprint": "fp_4d7b201289",
   "usage": {
-    "completion_tokens": 169,
-    "prompt_tokens": 969,
-    "total_tokens": 1138,
+    "completion_tokens": 97,
+    "prompt_tokens": 2587,
+    "total_tokens": 2684,
     "completion_tokens_details": {
       "accepted_prediction_tokens": 0,
       "audio_tokens": 0,
@@ -1898,7 +2092,7 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
     },
     "prompt_tokens_details": {
       "audio_tokens": 0,
-      "cached_tokens": 0
+      "cached_tokens": 1536
     }
   },
   "prompt_filter_results": [
@@ -1931,28 +2125,40 @@ These relationships indicate Microsoft’s ecosystem includes major technology c
 }
 ```
 
+### Planner Assistant Content (Round 2)
+
+Here are the sales contacts across all accounts, based on the latest available data:
+
+**Salesforce Inc**
+- John Smith (john.smith@salesforce.com)
+
+**Microsoft Corporation**
+- Jane Doe (jane.doe@microsoft.com)
+
+**Oracle Corporation**
+- Bob Johnson (bob.johnson@oracle.com)
+
+**Google LLC**
+- Alice Williams (alice.williams@google.com)
+
+If you need more details or contacts from additional accounts, let me know!
+
 ## Final Answer
 
-Here are the most recent sales opportunities across all accounts:
+Here are the sales contacts across all accounts, based on the latest available data:
 
-1. **Salesforce Inc**
-   - Opportunity: Salesforce CRM Upgrade
-   - Amount: $2,500,000
-   - Stage: Closed Won
-   - Close Date: 2024-03-15
+**Salesforce Inc**
+- John Smith (john.smith@salesforce.com)
 
-2. **Microsoft Corporation**
-   - Opportunity: Microsoft 365 Integration
-   - Amount: $1,800,000
-   - Stage: Proposal
-   - Close Date: 2024-11-30
+**Microsoft Corporation**
+- Jane Doe (jane.doe@microsoft.com)
 
-3. **Oracle Corporation**
-   - Opportunity: Oracle Database Migration
-   - Amount: $3,200,000
-   - Stage: Negotiation
-   - Close Date: 2024-12-15
+**Oracle Corporation**
+- Bob Johnson (bob.johnson@oracle.com)
 
-If you need more details or a summary by account, stage, or time period, let me know!
+**Google LLC**
+- Alice Williams (alice.williams@google.com)
+
+If you need more details or contacts from additional accounts, let me know!
 
 ---
