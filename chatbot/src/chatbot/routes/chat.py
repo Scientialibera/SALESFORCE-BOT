@@ -210,13 +210,16 @@ async def send_message(
             max_rounds=8
         )
 
-        execution_metadata["planning_result"] = planning_result
         has_function_calls = planning_result.get("has_function_calls", False)
         assistant_response = planning_result.get("assistant_message", "")
         agentic_metadata = planning_result.get("execution_metadata", {})
 
-        # Merge agentic metadata into execution metadata
+        # Merge agentic metadata into execution metadata (this already contains rounds with full data)
         execution_metadata.update(agentic_metadata)
+
+        # Store high-level planning result info (without duplicating execution_metadata)
+        execution_metadata["final_answer"] = planning_result.get("final_answer", False)
+        execution_metadata["has_function_calls"] = has_function_calls
 
         # Determine plan type based on execution
         if planning_result.get("final_answer"):

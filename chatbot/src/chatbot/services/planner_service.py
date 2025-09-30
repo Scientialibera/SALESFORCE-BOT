@@ -394,14 +394,22 @@ class PlannerService:
                         exec_record = {"agent_name": agent_name, "tool_calls": []}
                         if isinstance(result, dict) and isinstance(result.get("tool_calls"), list):
                             for r in result["tool_calls"]:
+                                # Summarized version for planner injection
                                 exec_record["tool_calls"].append({
                                     "function": r.get("tool_name", agent_name),
                                     "request": {"query": r.get("query", agent_query)},
                                     "response": self._summarize_query_result(r)
                                 })
+                                # Full version for metadata storage with complete results
                                 agent_exec_metadata["tool_calls"].append({
                                     "tool_name": r.get("tool_name"),
-                                    "success": r.get("success", False)
+                                    "success": r.get("success", False),
+                                    "query": r.get("query", agent_query),
+                                    "row_count": r.get("row_count", 0),
+                                    "error": r.get("error", None),
+                                    "source": r.get("source", None),
+                                    "data": r.get("data", None),  # Store full data
+                                    "bindings": r.get("bindings", None),  # For graph queries
                                 })
                         else:
                             # Backwards-compatible single-result shape
@@ -410,9 +418,16 @@ class PlannerService:
                                 "request": {"query": agent_query},
                                 "response": self._summarize_query_result(result)
                             })
+                            # Full version for metadata storage
                             agent_exec_metadata["tool_calls"].append({
                                 "tool_name": result.get("tool_name"),
-                                "success": result.get("success", False)
+                                "success": result.get("success", False),
+                                "query": agent_query,
+                                "row_count": result.get("row_count", 0),
+                                "error": result.get("error", None),
+                                "source": result.get("source", None),
+                                "data": result.get("data", None),  # Store full data
+                                "bindings": result.get("bindings", None),  # For graph queries
                             })
 
                         agent_exec_records.append(exec_record)

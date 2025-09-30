@@ -72,6 +72,23 @@ def test_history_retrieval():
                                     tool_calls = agent_exec.get("tool_calls", [])
                                     print(f"      - {agent_name}: {len(tool_calls)} tool call(s)")
 
+                                    # Show tool execution details
+                                    for tool_call in tool_calls:
+                                        print(f"        * Tool: {tool_call.get('tool_name')}")
+                                        print(f"          Query: {tool_call.get('query', '')[:80]}...")
+                                        print(f"          Success: {tool_call.get('success')}")
+                                        print(f"          Rows: {tool_call.get('row_count', 0)}")
+
+                                        # Show data preview if available
+                                        data = tool_call.get('data')
+                                        if data:
+                                            if isinstance(data, list):
+                                                print(f"          Data: {len(data)} items")
+                                            elif hasattr(data, 'rows'):
+                                                print(f"          Data: {len(data.rows)} rows")
+                                            else:
+                                                print(f"          Data: Present")
+
                 print("\n" + "="*80)
                 print("Full JSON response (first 500 chars):")
                 print(json.dumps(data, indent=2)[:500] + "...")

@@ -22,32 +22,51 @@
 {"event": "SQL agent enabled"}
 {"event": "Graph agent enabled"}
 {"event": "Application startup completed successfully"}
-{"request_id": "e2eaecb6", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
-DEBUG: [e2eaecb6] REQUEST START: POST http://localhost:8000/api/v1/chat
-DEBUG: [e2eaecb6] Headers: {'host': 'localhost:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-type': 'application/json', 'content-length': '74'}
-DEBUG: [e2eaecb6] Tasks before request: 4
-DEBUG: [e2eaecb6] Event loop running: True, closed: False
-DEBUG: [e2eaecb6] About to call next middleware/handler
+{"request_id": "acd32b46", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
+DEBUG: [acd32b46] REQUEST START: POST http://localhost:8000/api/v1/chat
+DEBUG: [acd32b46] Headers: {'host': 'localhost:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-type': 'application/json', 'content-length': '74'}
+DEBUG: [acd32b46] Tasks before request: 4
+DEBUG: [acd32b46] Event loop running: True, closed: False
+DEBUG: [acd32b46] About to call next middleware/handler
 {"url": "http://localhost:8000/api/v1/chat", "event": "Authenticating user request"}
 {"event": "Created Cosmos DB client with managed identity"}
-DEBUG: [e2eaecb6] Handler completed successfully
-DEBUG: [e2eaecb6] Response status: 200
-DEBUG: [e2eaecb6] Tasks after request: 5
-DEBUG: [e2eaecb6] Event loop running: True, closed: False
-{"request_id": "e2eaecb6", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "status_code": 200, "duration_ms": 2486, "event": "HTTP request completed"}
-DEBUG: [e2eaecb6] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:55952 - "POST /api/v1/chat HTTP/1.1" 200 OK
-{"request_id": "0ca1f6a8", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
-DEBUG: [0ca1f6a8] REQUEST START: POST http://localhost:8000/api/v1/chat
-DEBUG: [0ca1f6a8] Headers: {'host': 'localhost:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-type': 'application/json', 'content-length': '74'}
-DEBUG: [0ca1f6a8] Tasks before request: 4
-DEBUG: [0ca1f6a8] Event loop running: True, closed: False
-DEBUG: [0ca1f6a8] About to call next middleware/handler
+DEBUG: [acd32b46] Handler completed successfully
+DEBUG: [acd32b46] Response status: 200
+DEBUG: [acd32b46] Tasks after request: 5
+DEBUG: [acd32b46] Event loop running: True, closed: False
+{"request_id": "acd32b46", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "status_code": 200, "duration_ms": 2552, "event": "HTTP request completed"}
+DEBUG: [acd32b46] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:61839 - "POST /api/v1/chat HTTP/1.1" 200 OK
+{"request_id": "0c565da8", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "user_agent": "python-requests/2.32.5", "event": "HTTP request started"}
+DEBUG: [0c565da8] REQUEST START: POST http://localhost:8000/api/v1/chat
+DEBUG: [0c565da8] Headers: {'host': 'localhost:8000', 'user-agent': 'python-requests/2.32.5', 'accept-encoding': 'gzip, deflate', 'accept': '*/*', 'connection': 'keep-alive', 'content-type': 'application/json', 'content-length': '268'}
+DEBUG: [0c565da8] Tasks before request: 4
+DEBUG: [0c565da8] Event loop running: True, closed: False
+DEBUG: [0c565da8] About to call next middleware/handler
 {"url": "http://localhost:8000/api/v1/chat", "event": "Authenticating user request"}
-DEBUG: [0ca1f6a8] Handler completed successfully
-DEBUG: [0ca1f6a8] Response status: 200
-DEBUG: [0ca1f6a8] Tasks after request: 5
-DEBUG: [0ca1f6a8] Event loop running: True, closed: False
-{"request_id": "0ca1f6a8", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "status_code": 200, "duration_ms": 720, "event": "HTTP request completed"}
-DEBUG: [0ca1f6a8] REQUEST COMPLETED successfully
-INFO:     127.0.0.1:59174 - "POST /api/v1/chat HTTP/1.1" 200 OK
+{"session_id": "test-session-sql", "turn_id": "84b0e839-f5b6-487c-9c5e-b59b5371cf91", "user_id": "test-user", "event": "Processing chat message"}
+{"function_count": 4, "event": "Retrieved all function definitions"}
+{"event": "Retrieved 4 function definitions"}
+{"event": "Found 2 agent functions"}
+{"event": "Added agent function definition: graph_agent"}
+{"event": "Added agent function definition: sql_agent"}
+{"event": "Built 2 planner function definitions"}
+{"event": "Planner tools: 2 tools"}
+{"agent_name": "planner_system", "tenant_id": null, "scenario": null, "prompt_id": "planner_system", "event": "Retrieved system prompt"}
+{"event": "No conversation context provided"}
+{"endpoint": "https://salesforcebot-aoai-eastus2.openai.azure.com", "deployment": "gpt-4.1", "event": "Created Azure OpenAI client with managed identity token"}
+{"agent_name": "graph_agent_system", "tenant_id": null, "scenario": null, "prompt_id": "graph_agent_system", "event": "Retrieved system prompt"}
+{"agent_name": "graph_agent", "function_count": 3, "event": "Retrieved functions for agent"}
+{"agent_name": "sql_agent_system", "tenant_id": null, "scenario": null, "prompt_id": "sql_agent_system", "event": "Retrieved system prompt"}
+{"agent_name": "sql_agent", "function_count": 3, "event": "Retrieved functions for agent"}
+{"final_answer": true, "total_agent_calls": 2, "total_rounds": 3, "plan_type": "agentic_2_calls_3_rounds", "event": "Run-until-done planning completed"}
+{"session_id": "test-session-sql", "user_id": "user@example.com", "event": "Creating new chat session"}
+{"chat_id": "test-session-sql", "user_id": "user@example.com", "event": "Created chat session"}
+{"chat_id": "test-session-sql", "turn_id": "turn_582a7819", "event": "Added conversation turn"}
+DEBUG: [0c565da8] Handler completed successfully
+DEBUG: [0c565da8] Response status: 200
+DEBUG: [0c565da8] Tasks after request: 5
+DEBUG: [0c565da8] Event loop running: True, closed: False
+{"request_id": "0c565da8", "method": "POST", "url": "http://localhost:8000/api/v1/chat", "status_code": 200, "duration_ms": 13309, "event": "HTTP request completed"}
+DEBUG: [0c565da8] REQUEST COMPLETED successfully
+INFO:     127.0.0.1:53066 - "POST /api/v1/chat HTTP/1.1" 200 OK
