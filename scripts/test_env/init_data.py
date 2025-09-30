@@ -113,7 +113,10 @@ class DataInitializer:
                 # Use asyncio.to_thread to run the blocking CLI work in a
                 # thread so we don't block the event loop.
                 sql_endpoint = getattr(settings.cosmos_db, 'endpoint', None)
-                gremlin_endpoint = os.environ.get('AZURE_COSMOS_GREMLIN_ENDPOINT') or getattr(settings, 'gremlin', None) or getattr(settings.gremlin, 'endpoint', None)
+                # Prefer explicit env var for gremlin endpoint; fall back to
+                # settings.gremlin.endpoint when available (avoid passing the
+                # settings.gremlin object itself).
+                gremlin_endpoint = os.environ.get('AZURE_COSMOS_GREMLIN_ENDPOINT') or (getattr(settings, 'gremlin', None) and getattr(settings.gremlin, 'endpoint', None))
                 # Extract account/db names used elsewhere in the script
                 sql_db = getattr(settings.cosmos_db, 'database_name', None)
                 gremlin_db = os.environ.get('AZURE_COSMOS_GREMLIN_DATABASE') or getattr(settings.gremlin, 'database', None) or getattr(settings.gremlin, 'database_name', None)
@@ -210,6 +213,39 @@ class DataInitializer:
         if rc == 0 and out:
             sub_id = out.strip()
 
+        # If resource group isn't provided via env, try to discover it using
+        # the account name(s) we have. This helps when the caller didn't set
+        # CONTAINER_APP_RESOURCE_GROUP.
+        rg = os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')
+        if not rg:
+            # try to resolve by listing databaseAccounts that match the account
+            def discover_rg_for_account(account_name: str | None):
+                if not account_name:
+                    return None
+                rc2, out2, err2 = run([az, 'resource', 'list', '--resource-type', 'Microsoft.DocumentDB/databaseAccounts', '--query', f"[?contains(name, '{account_name}')]", '-o', 'json'], timeout=30)
+                if rc2 == 0 and out2:
+                    try:
+                        arr = json.loads(out2)
+                        if isinstance(arr, list) and len(arr) > 0:
+                            return arr[0].get('resourceGroup')
+                    except Exception:
+                        return None
+                return None
+
+            # attempt discovery for SQL and Gremlin accounts
+            if sql_endpoint:
+                try:
+                    sql_account_guess = sql_endpoint.replace('https://', '').split('.')[0]
+                    rg = discover_rg_for_account(sql_account_guess)
+                except Exception:
+                    rg = None
+            if not rg and gremlin_endpoint:
+                try:
+                    gr_account_guess = gremlin_endpoint.replace('https://', '').split('.')[0]
+                    rg = discover_rg_for_account(gr_account_guess)
+                except Exception:
+                    rg = None
+
         # Helper to create a native data-plane role assignment (Cosmos built-in data contributor)
         data_role_id = '00000000-0000-0000-0000-000000000002'
 
@@ -218,19 +254,20 @@ class DataInitializer:
             try:
                 sql_account = sql_endpoint.replace('https://', '').split('.')[0]
                 print_hdr(f"Attempting native data-plane role assignment for SQL account '{sql_account}', DB '{sql_db}'")
-                cmd = [az, 'cosmosdb', 'sql', 'role', 'assignment', 'create', '--account-name', sql_account, '--resource-group', os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP'), '--scope', f"/dbs/{sql_db}", '--principal-id', principal_oid, '--role-definition-id', data_role_id, '-o', 'json']
+                cmd = [az, 'cosmosdb', 'sql', 'role', 'assignment', 'create', '--account-name', sql_account, '--resource-group', rg or '', '--scope', f"/dbs/{sql_db}", '--principal-id', principal_oid, '--role-definition-id', data_role_id, '-o', 'json']
                 rc, out, err = run(cmd, timeout=30)
                 if rc == 0:
                     print_hdr(f"  ✓ Native data-plane role assigned for SQL DB '/dbs/{sql_db}' on account '{sql_account}'.")
                 else:
                     print_hdr(f"  ⚠️ Native data-plane assignment for SQL DB failed (rc={rc}). stdout={out} stderr={err}")
+                    print_hdr("    -> Manual command to try (fill <RG> if empty):")
+                    print_hdr(f"az cosmosdb sql role assignment create --account-name {sql_account} --resource-group <RG> --scope /dbs/{sql_db} --principal-id {principal_oid} --role-definition-id {data_role_id}")
             except Exception as e:
                 print_hdr(f"  ⚠️ Exception while assigning data-plane role for SQL account: {e}")
 
             # Attempt a management-plane role assignment (DocumentDB Account Contributor) scoped to the account
             if sub_id:
                 try:
-                    rg = os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')
                     if rg:
                         scope = f"/subscriptions/{sub_id}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/{sql_account}"
                         cmd2 = [az, 'role', 'assignment', 'create', '--assignee-object-id', principal_oid, '--role', 'DocumentDB Account Contributor', '--scope', scope, '-o', 'json']
@@ -239,6 +276,10 @@ class DataInitializer:
                             print_hdr(f"  ✓ Management role 'DocumentDB Account Contributor' assigned on account '{sql_account}'.")
                         else:
                             print_hdr(f"  ⚠️ Management role assignment for SQL account failed (rc={rc2}). stdout={out2} stderr={err2}")
+                            print_hdr("    -> Manual command to try:")
+                            print_hdr(f"az role assignment create --assignee-object-id {principal_oid} --role \"DocumentDB Account Contributor\" --scope {scope}")
+                    else:
+                        print_hdr("  ⚠️ Skipping management role assignment because resource group/subscription couldn't be determined. Set CONTAINER_APP_RESOURCE_GROUP and re-run, or run the shown manual command.")
                 except Exception as e:
                     print_hdr(f"  ⚠️ Exception while creating management role assignment for SQL account: {e}")
 
@@ -247,19 +288,20 @@ class DataInitializer:
             try:
                 gremlin_account = gremlin_endpoint.replace('https://', '').split('.')[0]
                 print_hdr(f"Attempting native data-plane role assignment for Gremlin account '{gremlin_account}', DB '{gremlin_db}'")
-                cmdg = [az, 'cosmosdb', 'sql', 'role', 'assignment', 'create', '--account-name', gremlin_account, '--resource-group', os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP'), '--scope', f"/dbs/{gremlin_db}", '--principal-id', principal_oid, '--role-definition-id', data_role_id, '-o', 'json']
+                cmdg = [az, 'cosmosdb', 'sql', 'role', 'assignment', 'create', '--account-name', gremlin_account, '--resource-group', rg or '', '--scope', f"/dbs/{gremlin_db}", '--principal-id', principal_oid, '--role-definition-id', data_role_id, '-o', 'json']
                 rcg, outg, errg = run(cmdg, timeout=30)
                 if rcg == 0:
                     print_hdr(f"  ✓ Native data-plane role assigned for Gremlin DB '/dbs/{gremlin_db}' on account '{gremlin_account}'.")
                 else:
                     print_hdr(f"  ⚠️ Native data-plane assignment for Gremlin DB failed (rc={rcg}). stdout={outg} stderr={errg}")
+                    print_hdr("    -> Manual command to try (fill <RG> if empty):")
+                    print_hdr(f"az cosmosdb sql role assignment create --account-name {gremlin_account} --resource-group <RG> --scope /dbs/{gremlin_db} --principal-id {principal_oid} --role-definition-id {data_role_id}")
             except Exception as e:
                 print_hdr(f"  ⚠️ Exception while assigning data-plane role for Gremlin account: {e}")
 
             # Management-plane assignment for gremlin account
             if sub_id:
                 try:
-                    rg = os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')
                     if rg:
                         scopeg = f"/subscriptions/{sub_id}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/{gremlin_account}"
                         cmd3 = [az, 'role', 'assignment', 'create', '--assignee-object-id', principal_oid, '--role', 'DocumentDB Account Contributor', '--scope', scopeg, '-o', 'json']
@@ -268,6 +310,10 @@ class DataInitializer:
                             print_hdr(f"  ✓ Management role 'DocumentDB Account Contributor' assigned on account '{gremlin_account}'.")
                         else:
                             print_hdr(f"  ⚠️ Management role assignment for Gremlin account failed (rc={rc3}). stdout={out3} stderr={err3}")
+                            print_hdr("    -> Manual command to try:")
+                            print_hdr(f"az role assignment create --assignee-object-id {principal_oid} --role \"DocumentDB Account Contributor\" --scope {scopeg}")
+                    else:
+                        print_hdr("  ⚠️ Skipping management role assignment because resource group/subscription couldn't be determined. Set CONTAINER_APP_RESOURCE_GROUP and re-run, or run the shown manual command.")
                 except Exception as e:
                     print_hdr(f"  ⚠️ Exception while creating management role assignment for Gremlin account: {e}")
 
