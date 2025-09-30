@@ -104,6 +104,23 @@ class DataInitializer:
             # CONTAINER_APP_RESOURCE_GROUP env var is set and the caller has
             # sufficient rights.
             await self.ensure_gremlin_graph()
+            # After confirming the SQL and Gremlin services (or attempting to
+            # create them), try to grant the executing principal the common
+            # management and native data-plane roles needed to perform the
+            # remaining initialization steps. This is best-effort and will
+            # print actionable guidance when az or permissions are missing.
+            try:
+                # Use asyncio.to_thread to run the blocking CLI work in a
+                # thread so we don't block the event loop.
+                sql_endpoint = getattr(settings.cosmos_db, 'endpoint', None)
+                gremlin_endpoint = os.environ.get('AZURE_COSMOS_GREMLIN_ENDPOINT') or getattr(settings, 'gremlin', None) or getattr(settings.gremlin, 'endpoint', None)
+                # Extract account/db names used elsewhere in the script
+                sql_db = getattr(settings.cosmos_db, 'database_name', None)
+                gremlin_db = os.environ.get('AZURE_COSMOS_GREMLIN_DATABASE') or getattr(settings.gremlin, 'database', None) or getattr(settings.gremlin, 'database_name', None)
+                from asyncio import to_thread
+                await to_thread(self._ensure_role_assignments_sync, sql_endpoint, sql_db, gremlin_endpoint, gremlin_db)
+            except Exception as e:
+                print(f"  ⚠️ Role-assignment attempt failed (continuing): {e}")
             # Initialize prompts/functions/agents using the uploader helper
             # This will provision required Cosmos DB database/containers via the
             # Azure CLI (AAD) and upload prompts and function/agent definitions
@@ -125,6 +142,136 @@ class DataInitializer:
                 await self.cosmos_client.close()
             if hasattr(self.gremlin_client, 'close'):
                 await self.gremlin_client.close()
+
+    def _ensure_role_assignments_sync(self, sql_endpoint: str | None, sql_db: str | None, gremlin_endpoint: str | None, gremlin_db: str | None):
+        """Best-effort: attempt to grant the executing principal management
+        and native data-plane roles required for provisioning and data
+        operations. This uses the Azure CLI (`az`) and intentionally does not
+        raise on failures — it prints helpful guidance instead.
+        """
+        import shutil
+        import subprocess
+        import base64
+        import json
+
+        def print_hdr(msg: str):
+            print(f"  ➤ {msg}")
+
+        if not shutil.which('az'):
+            print_hdr("Azure CLI ('az') not found in PATH; skipping role assignment step. Install Azure CLI and re-run this script to enable auto-role assignment.")
+            return
+
+        az = shutil.which('az')
+
+        def run(cmd: list, timeout: int = 30):
+            cmd0 = list(cmd)
+            cmd0[0] = az
+            try:
+                res = subprocess.run(cmd0, capture_output=True, text=True, timeout=timeout, check=False)
+                return res.returncode, res.stdout.strip(), res.stderr.strip()
+            except subprocess.TimeoutExpired as e:
+                return -1, '', f'Timeout after {timeout}s: {e}'
+
+        # Try to discover the current principal object id. Prefer interactive
+        # user identity, fallback to decoding the access token for the 'oid'.
+        principal_oid = None
+        rc, out, err = run([az, 'ad', 'signed-in-user', 'show', '--query', 'objectId', '-o', 'tsv'])
+        if rc == 0 and out:
+            principal_oid = out.strip()
+            print_hdr(f"Detected signed-in user objectId: {principal_oid}")
+        else:
+            # Fallback: get an access token and decode its payload to read 'oid'
+            rc2, out2, err2 = run([az, 'account', 'get-access-token', '--resource', 'https://management.azure.com/', '-o', 'json'])
+            if rc2 == 0 and out2:
+                try:
+                    tok = json.loads(out2).get('accessToken')
+                    if tok:
+                        parts = tok.split('.')
+                        if len(parts) >= 2:
+                            payload = parts[1]
+                            # base64url decode with padding
+                            padding = '=' * (-len(payload) % 4)
+                            decoded = base64.urlsafe_b64decode(payload + padding)
+                            claims = json.loads(decoded)
+                            principal_oid = claims.get('oid') or claims.get('sub')
+                            if principal_oid:
+                                print_hdr(f"Discovered principal oid from access token: {principal_oid}")
+                except Exception:
+                    pass
+
+        if not principal_oid:
+            print_hdr("Could not determine the current principal object id automatically. To assign roles manually, run the recommended az role assignment commands as described below.")
+            print_hdr("Hint: run 'az ad signed-in-user show --query objectId -o tsv' to see the object id for your user, or use a service principal's object id.")
+            return
+
+        # Subscription id (for management role scopes)
+        sub_id = None
+        rc, out, err = run([az, 'account', 'show', '--query', 'id', '-o', 'tsv'])
+        if rc == 0 and out:
+            sub_id = out.strip()
+
+        # Helper to create a native data-plane role assignment (Cosmos built-in data contributor)
+        data_role_id = '00000000-0000-0000-0000-000000000002'
+
+        # SQL account assignment
+        if sql_endpoint and sql_db:
+            try:
+                sql_account = sql_endpoint.replace('https://', '').split('.')[0]
+                print_hdr(f"Attempting native data-plane role assignment for SQL account '{sql_account}', DB '{sql_db}'")
+                cmd = [az, 'cosmosdb', 'sql', 'role', 'assignment', 'create', '--account-name', sql_account, '--resource-group', os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP'), '--scope', f"/dbs/{sql_db}", '--principal-id', principal_oid, '--role-definition-id', data_role_id, '-o', 'json']
+                rc, out, err = run(cmd, timeout=30)
+                if rc == 0:
+                    print_hdr(f"  ✓ Native data-plane role assigned for SQL DB '/dbs/{sql_db}' on account '{sql_account}'.")
+                else:
+                    print_hdr(f"  ⚠️ Native data-plane assignment for SQL DB failed (rc={rc}). stdout={out} stderr={err}")
+            except Exception as e:
+                print_hdr(f"  ⚠️ Exception while assigning data-plane role for SQL account: {e}")
+
+            # Attempt a management-plane role assignment (DocumentDB Account Contributor) scoped to the account
+            if sub_id:
+                try:
+                    rg = os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')
+                    if rg:
+                        scope = f"/subscriptions/{sub_id}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/{sql_account}"
+                        cmd2 = [az, 'role', 'assignment', 'create', '--assignee-object-id', principal_oid, '--role', 'DocumentDB Account Contributor', '--scope', scope, '-o', 'json']
+                        rc2, out2, err2 = run(cmd2, timeout=30)
+                        if rc2 == 0:
+                            print_hdr(f"  ✓ Management role 'DocumentDB Account Contributor' assigned on account '{sql_account}'.")
+                        else:
+                            print_hdr(f"  ⚠️ Management role assignment for SQL account failed (rc={rc2}). stdout={out2} stderr={err2}")
+                except Exception as e:
+                    print_hdr(f"  ⚠️ Exception while creating management role assignment for SQL account: {e}")
+
+        # Gremlin account assignment
+        if gremlin_endpoint and gremlin_db:
+            try:
+                gremlin_account = gremlin_endpoint.replace('https://', '').split('.')[0]
+                print_hdr(f"Attempting native data-plane role assignment for Gremlin account '{gremlin_account}', DB '{gremlin_db}'")
+                cmdg = [az, 'cosmosdb', 'sql', 'role', 'assignment', 'create', '--account-name', gremlin_account, '--resource-group', os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP'), '--scope', f"/dbs/{gremlin_db}", '--principal-id', principal_oid, '--role-definition-id', data_role_id, '-o', 'json']
+                rcg, outg, errg = run(cmdg, timeout=30)
+                if rcg == 0:
+                    print_hdr(f"  ✓ Native data-plane role assigned for Gremlin DB '/dbs/{gremlin_db}' on account '{gremlin_account}'.")
+                else:
+                    print_hdr(f"  ⚠️ Native data-plane assignment for Gremlin DB failed (rc={rcg}). stdout={outg} stderr={errg}")
+            except Exception as e:
+                print_hdr(f"  ⚠️ Exception while assigning data-plane role for Gremlin account: {e}")
+
+            # Management-plane assignment for gremlin account
+            if sub_id:
+                try:
+                    rg = os.environ.get('CONTAINER_APP_RESOURCE_GROUP') or os.environ.get('CONTAINER_APP_RESOURCEGROUP')
+                    if rg:
+                        scopeg = f"/subscriptions/{sub_id}/resourceGroups/{rg}/providers/Microsoft.DocumentDB/databaseAccounts/{gremlin_account}"
+                        cmd3 = [az, 'role', 'assignment', 'create', '--assignee-object-id', principal_oid, '--role', 'DocumentDB Account Contributor', '--scope', scopeg, '-o', 'json']
+                        rc3, out3, err3 = run(cmd3, timeout=30)
+                        if rc3 == 0:
+                            print_hdr(f"  ✓ Management role 'DocumentDB Account Contributor' assigned on account '{gremlin_account}'.")
+                        else:
+                            print_hdr(f"  ⚠️ Management role assignment for Gremlin account failed (rc={rc3}). stdout={out3} stderr={err3}")
+                except Exception as e:
+                    print_hdr(f"  ⚠️ Exception while creating management role assignment for Gremlin account: {e}")
+
+        print_hdr("Role-assignment best-effort step completed. If you still see permission errors, restart processes that cache AAD tokens and re-run this script. For manual remediation, see printed CLI failures above.")
     
     async def upload_prompts(self):
         """Upload system prompts to Cosmos DB."""
@@ -932,19 +1079,6 @@ class DataInitializer:
                     print(f"    ERROR creating gremlin graph: rc={rc}\nstdout={out}\nstderr={err}")
                 else:
                     print(f"    ✓ Created gremlin graph '{gremlin_graph}'.")
-
-        # After creation, poll briefly for availability via a small Gremlin probe
-        import time
-        for i in range(6):
-            try:
-                await self.gremlin_client.execute_query('g.V().limit(1)')
-                print("  ✓ Gremlin graph is available.")
-                return
-            except Exception:
-                time.sleep(2)
-
-        print("  ⚠️ Gremlin graph did not become available after provisioning attempt. It may still be initializing or permissions prevent data-plane access.")
-
 
 async def main():
     """Main entry point for data initialization."""
