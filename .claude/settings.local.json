@@ -1,9 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(powershell:*)",
-      "Bash(set PYTHONPATH=chatbotsrc)",
-      "Bash(python:*)"
+      "Bash(cat:*)",
+      "Bash(pip search:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []
