@@ -101,14 +101,63 @@ async def send_message(
     """Process chat message using planner-first agentic architecture."""
     start_time = datetime.utcnow()
 
-    # If no messages provided but a session_id is present, return chat history
+    # If no messages provided but a session_id is present, handle feedback or return history
     if not request_data.messages or len(request_data.messages) == 0:
         if request_data.session_id:
+            # Check if this is a feedback-only request
+            if request_data.metadata and request_data.metadata.get("feedback"):
+                # Get the latest turn from the session to attach feedback
+                turns = await unified_service.get_chat_context(request_data.session_id, user_context, max_turns=1)
+                if turns and len(turns) > 0:
+                    latest_turn = turns[-1]
+                    turn_id = latest_turn.id
+
+                    # Submit feedback for the latest turn
+                    fb = request_data.metadata.get("feedback")
+                    rating = int(fb.get("rating")) if fb.get("rating") is not None else None
+                    comment = fb.get("comment") if fb.get("comment") is not None else None
+
+                    if rating is not None:
+                        feedback_id = await unified_service.submit_feedback(
+                            turn_id=turn_id,
+                            user_id=user_context.user_id,
+                            rating=rating,
+                            comment=comment,
+                            metadata={k: v for k, v in request_data.metadata.items() if k != "feedback"}
+                        )
+
+                        logger.info("Feedback submitted", session_id=request_data.session_id, turn_id=turn_id, rating=rating)
+
+                        return ChatResponse(
+                            session_id=request_data.session_id,
+                            turn_id=turn_id,
+                            choices=[{"index": 0, "message": {"role": "assistant", "content": "Feedback received"}, "finish_reason": "feedback"}],
+                            usage={},
+                            sources=[],
+                            metadata={"feedback_submitted": True, "feedback_id": feedback_id, "turn_id": turn_id}
+                        )
+                else:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No conversation turns found for feedback")
+
+            # Otherwise, return chat history
             turns = await unified_service.get_chat_context(request_data.session_id, user_context, max_turns=50)
 
             # Build full conversation history with all metadata
             conversation_turns = []
             for t in turns:
+                # Get feedback for this turn
+                feedback = None
+                try:
+                    feedback_data = await unified_service.get_feedback_for_turn(t.id)
+                    if feedback_data:
+                        feedback = {
+                            "rating": feedback_data.rating if hasattr(feedback_data, 'rating') else feedback_data.get('rating'),
+                            "comment": feedback_data.comment if hasattr(feedback_data, 'comment') else feedback_data.get('comment'),
+                            "created_at": feedback_data.created_at if hasattr(feedback_data, 'created_at') else feedback_data.get('created_at'),
+                        }
+                except Exception as e:
+                    logger.debug("No feedback found for turn", turn_id=t.id, error=str(e))
+
                 turn_data = {
                     "turn_id": t.id,
                     "turn_number": t.turn_number,
@@ -129,6 +178,7 @@ async def send_message(
                     "planning_time_ms": t.planning_time_ms,
                     "total_time_ms": t.total_time_ms,
                     "execution_metadata": t.execution_metadata if hasattr(t, 'execution_metadata') else None,
+                    "feedback": feedback,  # Include feedback if available
                 }
                 conversation_turns.append(turn_data)
 
