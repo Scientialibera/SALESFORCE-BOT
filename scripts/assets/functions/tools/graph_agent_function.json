@@ -3,7 +3,7 @@
   "agent_type": "graph",
   "function_name": "graph_agent_function",
   "name": "graph_agent_function",
-  "description": "REQUIRED TOOL - Execute a Cosmos-Gremlin query with named parameter bindings. This tool MUST be called to execute graph queries. Do NOT return natural language responses without calling this tool. Use Cosmos-supported Gremlin steps only (e.g., valueMap(true), project, coalesce).",
+  "description": "Function that accepts a Gremlin query with bindings and executes it against the knowledge graph.",
   "parameters": {
     "type": "object",
     "properties": {

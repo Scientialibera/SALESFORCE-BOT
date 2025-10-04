@@ -78,7 +78,7 @@ Emit each tool call as a single object:
 {
   "tool_name": "<agent_or_tool_name>",
   "arguments": {
-    "query": "Detailed, context-encapsulated instructions that enable the agent to craft a precise query. May include knowledge discovered in previous steps.",
+    "query": "You are an <Agent> that does ... You must create a valid query to answer...[Detailed, context-encapsulated instructions that enable the agent to craft a precise query. May include knowledge discovered in previous steps.]",
     "bindings": { "<param>": "<value>" },
     "accounts_mentioned": ["…"]
   }
@@ -100,7 +100,7 @@ Emit each tool call as a single object:
 {
   "tool_name": "graph_agent",
   "arguments": {
-    "query": "Task: Find accounts with SOWs similar to the target account's ai_chatbot engagements. Input: Target account = Microsoft Corporation; Offering filter = ai_chatbot. Output: A small, deduped list of related account names (and ids if available) suitable to hand off to SQL for contact lookup.",
+    "query": "Task: You are a graph Agent that must use the the user query and to create the corresponding graph query that will answer the question. Find accounts with SOWs similar to the target account's ai_chatbot engagements. Target account = Microsoft Corporation; Offering filter = ai_chatbot.",
     "accounts_mentioned": ["Microsoft Corporation"]
   }
 }
@@ -114,7 +114,7 @@ Emit each tool call as a single object:
 {
   "tool_name": "sql_agent",
   "arguments": {
-    "query": "Task: Get contacts for the discovered accounts. Emphasize Sales/GTMS roles if available; otherwise return all contacts. Sort by account name, then last name, first name. Limit 100.",
+    "query": "Task: You are a sql Agent that must use the the user query and to create the corresponding query that will answer the question.  Get contacts for the discovered accounts. Emphasize Sales/GTMS roles if available; otherwise return all contacts. Sort by account name, then last name, first name. Limit 100.",
     "accounts_mentioned": ["Microsoft Corporation"]
   }
 }
