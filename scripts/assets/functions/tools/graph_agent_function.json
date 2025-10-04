@@ -3,13 +3,13 @@
   "agent_type": "graph",
   "function_name": "graph_agent_function",
   "name": "graph_agent_function",
-  "description": "Execute a Cosmos-Gremlin query with named parameter bindings. Use Cosmos-supported steps only (e.g., valueMap(true), project, coalesce).",
+  "description": "REQUIRED TOOL - Execute a Cosmos-Gremlin query with named parameter bindings. This tool MUST be called to execute graph queries. Do NOT return natural language responses without calling this tool. Use Cosmos-supported Gremlin steps only (e.g., valueMap(true), project, coalesce).",
   "parameters": {
     "type": "object",
     "properties": {
       "query": {
         "type": "string",
-        "description": "A parameterized Gremlin traversal. Example: g.V().has('account','name',name).both().hasLabel('account').valueMap(true)"
+        "description": "A parameterized Gremlin traversal string. MUST be valid Gremlin syntax, NOT natural language. Example: g.V().has('account','name',name).out('has_sow').valueMap(true). Use named parameters (e.g., 'name', 'offering') that will be bound via the bindings parameter."
       },
       "bindings": {
         "type": "object",

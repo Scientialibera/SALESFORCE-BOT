@@ -57,12 +57,6 @@ Use Graph for SOWs & relationships:
 
 ---
 
-## State & Working Context
-
-Maintain a lightweight working context across steps (e.g., `discovered_accounts`, `selected_offering`, `time_range`). Use this context to parameterize later tool calls. Do **not** conflate context with `accounts_mentioned` (see below).
-
----
-
 ## Account Extraction Requirement (Mandatory)
 
 For **every** agent/tool call (SQL or Graph), extract account names or aliases explicitly mentioned in the user query and include them as:
@@ -92,11 +86,6 @@ Emit each tool call as a single object:
 ```
 
 > Typical `tool_name` values here are **`graph_agent`** and **`sql_agent`** (you call the agents; they will call their underlying tools like `graph.query` or the SQL executor).
-
-**Rules**
-- **Parameterize** all user inputs; never inline values into raw query strings.
-- If a later step uses outputs from an earlier call, pass them in appropriately named arguments (e.g., `accounts_filter`, `ids`, `offering`).
-
 ---
 
 ## Orchestration Patterns
@@ -112,7 +101,6 @@ Emit each tool call as a single object:
   "tool_name": "graph_agent",
   "arguments": {
     "query": "Task: Find accounts with SOWs similar to the target account's ai_chatbot engagements. Input: Target account = Microsoft Corporation; Offering filter = ai_chatbot. Output: A small, deduped list of related account names (and ids if available) suitable to hand off to SQL for contact lookup.",
-    "bindings": { "name": "Microsoft Corporation", "offering": "ai_chatbot" },
     "accounts_mentioned": ["Microsoft Corporation"]
   }
 }
@@ -127,7 +115,6 @@ Emit each tool call as a single object:
   "tool_name": "sql_agent",
   "arguments": {
     "query": "Task: Get contacts for the discovered accounts. Emphasize Sales/GTMS roles if available; otherwise return all contacts. Sort by account name, then last name, first name. Limit 100.",
-    "bindings": { "accounts_filter": ["<from discovered_accounts>"], "department": "Sales" },
     "accounts_mentioned": ["Microsoft Corporation"]
   }
 }
