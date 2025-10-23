@@ -83,7 +83,7 @@ $rgId = az group show -n $Rg --query id -o tsv
 # -------------------- Managed Identity --------------------
 Write-Host ">>> Managed Identity" -ForegroundColor Cyan
 if (-not (Exists @("identity","show","-g",$Rg,"-n",$MiName))) {
-  az identity create -g $Rg -n $MiName -l $Location -o none
+  az identity create -g $Rg -n $MiName -l v -o none --tags owner="Aura" purpose="Access"
 }
 $uami = az identity show -g $Rg -n $MiName -o json | ConvertFrom-Json
 $miId = $uami.id
